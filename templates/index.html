@@ -1,91 +1,24 @@
-<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LabBirita Mini Loja</title>
+    <title>LabBirita Mini 🍻</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <h1>LabBirita Mini Loja</h1>
+    <header>
+        <h1>🍺 LabBirita Mini Loja</h1>
+        <p>Escolha sua birita e finalize o pedido!</p>
+    </header>
 
-    <div class="products" id="productsContainer">
-        <!-- Produtos vão ser carregados aqui via JS -->
-    </div>
+    <main>
+        <div id="produtos" class="grid"></div>
+    </main>
 
-    <div id="orderResult"></div>
+    <footer>
+        <p>© 2025 LabBirita Inc. | Powered by Flask 💻</p>
+    </footer>
 
-    <script>
-        const productsContainer = document.getElementById('productsContainer');
-        const orderResult = document.getElementById('orderResult');
-
-        // Função pra carregar produtos da API
-        async function loadProducts() {
-            try {
-                const res = await fetch('/api/products');
-                const data = await res.json();
-                productsContainer.innerHTML = '';
-                data.products.forEach(p => {
-                    const card = document.createElement('div');
-                    card.className = 'product';
-                    card.innerHTML = `
-                        <h2>${p.title}</h2>
-                        <p>R$ ${p.price.toFixed(2)}</p>
-                        <button onclick="buyProduct(${p.id})">Comprar</button>
-                    `;
-                    productsContainer.appendChild(card);
-                });
-            } catch (err) {
-                console.error('Erro ao carregar produtos:', err);
-                productsContainer.innerHTML = '<p>Erro ao carregar produtos.</p>';
-            }
-        }
-
-        // Função pra simular pedido
-        async function buyProduct(productId) {
-            const customer = {
-                name: 'Cliente Teste',
-                email: 'teste@labbirita.com'
-            };
-
-            orderResult.style.display = 'none';
-            orderResult.classList.remove('error');
-
-            try {
-                const res = await fetch('/api/order', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ product_id: productId, customer })
-                });
-                const data = await res.json();
-
-                if (data.ok) {
-                    orderResult.innerHTML = `
-                        <strong>Pedido realizado com sucesso!</strong><br>
-                        Produto: ${data.order.product}<br>
-                        Valor: R$ ${data.order.price.toFixed(2)}<br>
-                        Código de rastreio: ${data.order.tracking_code}<br>
-                        Status: ${data.order.status}<br>
-                        Data de envio: ${data.order.ship_date}<br>
-                        Entrega estimada em ${data.order.estimated_delivery_days} dias
-                    `;
-                    orderResult.style.display = 'block';
-                } else {
-                    orderResult.innerHTML = 'Erro ao realizar pedido.';
-                    orderResult.classList.add('error');
-                    orderResult.style.display = 'block';
-                }
-            } catch (err) {
-                console.error('Erro ao criar pedido:', err);
-                orderResult.innerHTML = 'Erro ao realizar pedido.';
-                orderResult.classList.add('error');
-                orderResult.style.display = 'block';
-            }
-        }
-
-        // Carrega produtos ao iniciar
-        loadProducts();
-    </script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
