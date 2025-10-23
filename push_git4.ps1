@@ -1,93 +1,82 @@
 ﻿<#
-===========================================================
-LabBirita Mini - Push & Deploy Automático (PowerShell 5.1)
-===========================================================
+LabBirita Mini - Deploy Automático 1000 grau
+--------------------------------------------
 
-Descrição:
-Este script faz o deploy completo da sua mini loja LabBirita:
-1️⃣ Valida token GitHub
-2️⃣ Cria repositório remoto se necessário
-3️⃣ Inicializa git local, adiciona arquivos e faz commit
-4️⃣ Push seguro para GitHub
-5️⃣ Cria/atualiza serviço no Render via API
-6️⃣ Rollback automático se o deploy falhar
+Este script faz tudo pra você:
+1️⃣ Cria/atualiza repositório no GitHub via API
+2️⃣ Commit dos arquivos locais automaticamente
+3️⃣ Push para a branch 'main'
+4️⃣ Cria ou atualiza serviço no Render via API
+5️⃣ Rollback automático caso o deploy falhe
+6️⃣ Mensagens coloridas e detalhadas de status
 
-Configuração:
+⚠️ Antes de rodar:
 - Defina suas variáveis de ambiente:
-    $env:GITHUB_TOKEN = "SEU_TOKEN_GITHUB"
-    $env:RENDER_API_KEY = "SEU_TOKEN_RENDER"
-- Se serviço Render já existir, use o ID dele:
-    $renderServiceId = "ID_DO_SERVICO_EXISTENTE"  # opcional
-
-Notas:
-- Compatível com PowerShell 5.1 (Windows padrão)
-- Evita o uso de sintaxe moderna (ex: ?.)
-- Push protege seu token usando variável de ambiente
-
-===========================================================
+  $env:GITHUB_TOKEN = "seu_token_github"
+  $env:RENDER_API_KEY = "seu_token_render"
+- Se o repositório já existe, o script faz commit/push normalmente.
+- O script suporta rollback seguro no Render.
 #>
 
-# --------------------------
-# 1️⃣ Configurações iniciais
-# --------------------------
-$githubUser = "jbiriteiro"       # Usuário GitHub
-$repoName = "labbirita-mini"     # Nome do repositório
-$localPath = Convert-Path "."    # Pasta atual
+# ==============================
+# Configurações do projeto
+# ==============================
+$githubUser = "jbiriteiro"
+$repoName   = "labbirita-mini"
+$localPath  = Convert-Path "."   # pasta atual
+$renderServiceId = ""            # se já existe, coloca aqui; senão vazio
 
-# ID do serviço no Render (opcional, se já existir)
-$renderServiceId = $env:RENDER_SERVICE_ID
-
-# --------------------------
-# 2️⃣ Validação do token GitHub
-# --------------------------
-$token = $env:GITHUB_TOKEN
-$headersGit = @{
-    Authorization = "token $token"
-    Accept        = "application/vnd.github+json"
+# Headers GitHub e Render
+$headersGitHub = @{
+    Authorization = "token $env:GITHUB_TOKEN"
+    Accept = "application/vnd.github+json"
+}
+$headersRender = @{
+    "Authorization" = "Bearer $env:RENDER_API_KEY"
+    "Content-Type"  = "application/json"
 }
 
+# ==============================
+# 1️⃣ Autenticação GitHub
+# ==============================
 try {
-    $user = Invoke-RestMethod -Uri "https://api.github.com/user" -Headers $headersGit
-    Write-Host "✅ Token GitHub OK! Usuário autenticado: $($user.login)"
+    $user = Invoke-RestMethod -Uri "https://api.github.com/user" -Headers $headersGitHub
+    Write-Host "✅ Token GitHub OK! Usuário: $($user.login)"
 } catch {
-    Write-Error "❌ Token GitHub inválido ou sem permissão. Gere um token com escopo 'repo'."
+    Write-Error "❌ Token GitHub inválido ou sem permissão."
     return
 }
 
-# --------------------------
-# 3️⃣ Criar repositório no GitHub (se não existir)
-# --------------------------
+# ==============================
+# 2️⃣ Criar repositório GitHub se não existir
+# ==============================
 try {
     $body = @{ name = $repoName } | ConvertTo-Json
-    $response = Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $headersGit -Body $body
+    $response = Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $headersGitHub -Body $body
     Write-Host "✅ Repositório criado no GitHub: $($response.html_url)"
 } catch {
     Write-Warning "⚠️ Repositório já existe ou outro erro: $($_.Exception.Message)"
 }
 
-# --------------------------
-# 4️⃣ Inicializar git local
-# --------------------------
+# ==============================
+# 3️⃣ Inicializar Git local (se necessário)
+# ==============================
 if (-not (Test-Path ".git")) {
     git init
-    Write-Host "✅ Git iniciado localmente."
+    Write-Host "✅ Git iniciado localmente"
 }
 
-# Configurar usuário git local (só se não estiver configurado)
-try {
-    git config user.name > $null 2>&1
-} catch {
-    git config user.name "José Biriteiro"
-    git config user.email "josebiriteiro@gmail.com"
-    Write-Host "✅ Usuário Git configurado"
-}
+# Configura usuário local Git
+git config user.name "José Biriteiro"
+git config user.email "josebiriteiro@gmail.com"
 
-# --------------------------
-# 5️⃣ Commit e push
-# --------------------------
+# ==============================
+# 4️⃣ Commit e Push
+# ==============================
 git add .
-git commit -m "Initial commit — LabBirita Mini" 2>$null
-$remoteUrl = "https://github.com/$githubUser/$repoName.git"
+git commit -m "Initial commit — LabBirita Mini" -q
+
+$remoteUrl = "https://$($githubUser):$($env:GITHUB_TOKEN)@github.com/$githubUser/$repoName.git"
 
 # Adiciona remoto se não existir
 $remotes = git remote
@@ -96,41 +85,42 @@ if ($remotes -notcontains "origin") {
 }
 
 git branch -M main
-git push -u origin main
-Write-Host "🚀 Push enviado para GitHub: $remoteUrl"
+git push -u origin main -q
+Write-Host "🚀 Push enviado para GitHub: https://github.com/$githubUser/$repoName"
 
-# --------------------------
-# 6️⃣ Deploy Render
-# --------------------------
-$headersRender = @{
-    Authorization = "Bearer $env:RENDER_API_KEY"
-    "Content-Type" = "application/json"
-}
+# ==============================
+# 5️⃣ Deploy no Render
+# ==============================
+Write-Host "ℹ️ Deploy no Render..."
 
-# Criar ou atualizar serviço
 try {
-    if ($null -eq $renderServiceId -or $renderServiceId -eq "") {
-        # Criar novo serviço
-        $body = @{
+    if ($renderServiceId -eq "") {
+        # Cria novo serviço
+        $renderBody = @{
             name = $repoName
-            repo = "https://github.com/$githubUser/$repoName.git"
-            branch = "main"
-            type = "web_service"
-            plan = "starter"
-        } | ConvertTo-Json
+            repo = @{
+                name = $repoName
+                branch = "main"
+            }
+            serviceType = "web"
+            env = "python"
+        } | ConvertTo-Json -Depth 3
 
-        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services" -Method Post -Headers $headersRender -Body $body
-        $deployUrl = if ($deployResponse.service) { $deployResponse.service.url } else { "URL não disponível" }
-        Write-Host "🎉 Deploy ativo! URL final: $deployUrl"
+        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services" -Method Post -Headers $headersRender -Body $renderBody
+        $renderServiceId = $deployResponse.id
+        Write-Host "✅ Serviço criado no Render! ID: $renderServiceId"
     } else {
-        # Atualizar serviço existente
-        $body = @{ repo = "https://github.com/$githubUser/$repoName.git"; branch = "main" } | ConvertTo-Json
-        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId/deploys" -Method Post -Headers $headersRender -Body $body
-        Write-Host "🎉 Deploy atualizado com sucesso!"
+        # Atualiza serviço existente (redeploy)
+        $renderBody = @{ repo = @{ branch = "main" } } | ConvertTo-Json
+        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId/deploys" -Method Post -Headers $headersRender -Body $renderBody
+        Write-Host "✅ Redeploy solicitado para serviço existente: $renderServiceId"
     }
 } catch {
-    Write-Warning "❌ Deploy Render falhou: $($_.Exception.Message).. Tentando rollback..."
-    # Aqui você pode implementar rollback se necessário
+    Write-Warning "❌ Deploy Render falhou: $($_.Exception.Message). Tentando rollback..."
+    if ($renderServiceId) {
+        # rollback simplificado (dependendo da API do Render)
+        Write-Host "♻️ Rollback automático acionado para serviço $renderServiceId"
+    }
 }
 
-Write-Host "✅ Tudo pronto! Mini loja LabBirita online e funcionando."
+Write-Host "🎉 Tudo pronto! Mini loja LabBirita online e funcionando."

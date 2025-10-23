@@ -1,12 +1,22 @@
 # app.py
+"""
+LabBirita Mini - Versão pronta para Render
+
+Este Flask app:
+- Serve a mini loja com produtos de teste
+- Permite criar pedidos simulados
+- Roda localmente ou no Render usando a porta definida por variável de ambiente
+- Debug mode desligado por padrão para produção
+"""
+
 from flask import Flask, jsonify, render_template, request
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 import os
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
-# Produtos de teste (use esses pra popular sua loja)
+# Produtos de teste
 PRODUCTS = [
     {"id": 1, "title": "Fone Bluetooth Sem Fio", "price": 99.0, "cost": 45.0},
     {"id": 2, "title": "Smartwatch Fitness Tracker", "price": 149.0, "cost": 70.0},
@@ -28,32 +38,36 @@ def order():
     data = request.get_json() or {}
     product_id = data.get("product_id")
     customer = data.get("customer", {})
+
+    # Busca produto
     prod = next((p for p in PRODUCTS if p["id"] == product_id), None)
     if not prod:
         return jsonify({"error": "Produto não encontrado"}), 404
 
-    # Simula criação de pedido e rastreio
+    # Simula pedido
     order_id = f"LB{random.randint(100000,999999)}"
-    shipped_in_days = random.choice([3, 5, 7, 14, 25])  # simula tempos
-    ship_date = datetime.utcnow().strftime("%Y-%m-%d")
-    est_delivery = (datetime.utcnow()).strftime("%Y-%m-%d")
+    shipped_in_days = random.choice([3, 5, 7, 14, 25])
+    ship_date = datetime.utcnow()
+    est_delivery = ship_date + timedelta(days=shipped_in_days)
+
     tracking = {
         "order_id": order_id,
         "product": prod["title"],
         "price": prod["price"],
-        "ship_date": ship_date,
+        "ship_date": ship_date.strftime("%Y-%m-%d"),
         "estimated_delivery_days": shipped_in_days,
+        "estimated_delivery_date": est_delivery.strftime("%Y-%m-%d"),
         "tracking_code": f"BR{random.randint(1000000,9999999)}",
         "status": "processing"
     }
-    # Retorna resposta simulada
+
     return jsonify({"ok": True, "order": tracking})
 
-# Healthcheck
 @app.route("/health")
 def health():
     return "OK", 200
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    debug_mode = os.environ.get("FLASK_DEBUG", "0") == "1"  # debug só se variável FLASK_DEBUG=1
+    app.run(host="0.0.0.0", port=port, debug=debug_mode)
