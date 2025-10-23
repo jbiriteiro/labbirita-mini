@@ -1,0 +1,28 @@
+:root{
+  --bg:#f6f8fb;
+  --card:#fff;
+  --accent:#FF6B35;
+  --dark:#1B2A49;
+}
+body{
+  font-family: Arial, Helvetica, sans-serif;
+  background:var(--bg);
+  color:var(--dark);
+  margin:0;
+  padding:0;
+}
+header{
+  background:linear-gradient(90deg,var(--dark),#2b3b5a);
+  color:white;
+  padding:18px;
+  text-align:center;
+}
+header h1{margin:0;font-size:22px}
+.tag{opacity:.9;margin-top:6px;font-size:13px}
+main{padding:18px;max-width:980px;margin:18px auto}
+.product{background:var(--card);border-radius:8px;padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:12px;box-shadow:0 2px 6px rgba(0,0,0,0.06)}
+.product .info{flex:1}
+.price{font-weight:700;color:var(--accent)}
+.btn{background:var(--accent);color:white;padding:8px 12px;border-radius:6px;border:none;cursor:pointer}
+.hidden{display:none}
+footer{padding:16px;text-align:center;color:#666}
