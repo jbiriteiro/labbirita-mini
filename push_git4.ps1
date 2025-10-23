@@ -12,8 +12,8 @@ Este script faz tudo pra você:
 
 ⚠️ Antes de rodar:
 - Defina suas variáveis de ambiente:
-  $env:GITHUB_TOKEN = "seu_token_github"
-  $env:RENDER_API_KEY = "seu_token_render"
+  $env:GITHUB_TOKEN = "seu_token_github"
+  $env:RENDER_API_KEY = "seu_token_render"
 - Se o repositório já existe, o script faz commit/push normalmente.
 - O script suporta rollback seguro no Render.
 #>
@@ -34,7 +34,7 @@ $repoName   = "labbirita-mini"
 $localPath  = Convert-Path "."   # pasta atual
 $renderServiceId = ""            # se já existe, coloca aqui; senão vazio
 
-# Configurações do Serviço Render (Melhoria 1: Flexibilidade)
+# Configurações do Serviço Render
 $renderServiceType = "web"
 $renderServiceEnv = "python"
 $commitMessage = "Deploy Automático: Atualização via LabBirita v2.0"
@@ -68,7 +68,7 @@ Write-Host "`n# 2. Configuração do Repositório GitHub" -ForegroundColor Yello
 try {
     $body = @{ 
         name = $repoName 
-        private = $true # Melhoria 2: Cria o repositório como privado por padrão (mais seguro)
+        private = $true
     } | ConvertTo-Json
     $response = Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $headersGitHub -Body $body
     Write-Host "✅ Repositório criado no GitHub: $($response.html_url)" -ForegroundColor Green
@@ -124,31 +124,35 @@ try {
 }
 
 # ==============================
-# 5️⃣ Deploy no Render (Com Rollback Melhorado)
+# 5️⃣ Deploy no Render (Ajuste Crítico na API)
 # ==============================
 Write-Host "`n# 5. Deploy no Render" -ForegroundColor Yellow
 try {
     $repoUrl = "https://github.com/$githubUser/$repoName"
 
     if ($renderServiceId -eq "") {
-        # Cria novo serviço (Melhoria 3: Usando variáveis de configuração)
+        # Cria novo serviço - SINTAXE CORRIGIDA para API do RENDER (type e serviceDetails)
         $renderBody = @{
+            type = "web_service" # CAMPO OBRIGATÓRIO: deve ser 'web_service', 'private_service', etc.
             name = $repoName
-            repo = $repoUrl
-            serviceType = $renderServiceType
-            env = $renderServiceEnv
-        } | ConvertTo-Json -Depth 3
+            serviceDetails = @{ # Configurações aninhadas
+                env = $renderServiceEnv # 'python', 'node', 'docker', etc.
+                repo = $repoUrl
+                branch = "main"
+            }
+        } | ConvertTo-Json -Depth 4
 
         $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services" -Method Post -Headers $headersRender -Body $renderBody
         $renderServiceId = $deployResponse.id
         Write-Host "✅ Serviço Render criado com sucesso! ID: $renderServiceId" -ForegroundColor Green
     } else {
         # Atualiza serviço existente (redeploy)
+        # O Render API v1 aceita POST em /deploys para trigger de redeploy.
         $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId/deploys" -Method Post -Headers $headersRender 
         Write-Host "✅ Redeploy solicitado com sucesso para o serviço: $renderServiceId" -ForegroundColor Green
     }
 
-    # Melhoria 4: Feedback da URL do Render (se disponível)
+    # Feedback da URL do Render (se disponível)
     if ($deployResponse.service.serviceDetails.url) {
         Write-Host "🌐 URL do Serviço: $($deployResponse.service.serviceDetails.url)" -ForegroundColor Cyan
     }
