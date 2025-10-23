@@ -1,17 +1,16 @@
 ﻿<#
-LabBirita Mini - Deploy Automático 1000 grau (v3.0 - Service ID Fixo)
-------------------------------------------------------------------
+LabBirita Mini - Deploy Automático 1000 grau (v3.1 - Final)
+----------------------------------------------------------
 
 Este script faz tudo pra você, agora usando o ID fixo do Render:
 1️⃣ Cria/atualiza repositório no GitHub via API
 2️⃣ Commit dos arquivos locais automaticamente
 3️⃣ Push para a branch 'main'
-4️⃣ RODE REDEPLOY no serviço Render via API
+4️⃣ RODA REDEPLOY no serviço Render via API (ID Fixo)
 5️⃣ Rollback automático caso o deploy falhe (simplificado)
 6️⃣ Mensagens coloridas e detalhadas de status
 
 ⚠️ ANTES DE RODAR NOVAMENTE:
-- Certifique-se de que o repositório contém o arquivo app.py (Web App Flask/Django).
 - Este script agora vai direto para o REDEPLOY, pois o Service ID está preenchido.
 #>
 
@@ -34,7 +33,7 @@ $renderServiceId = "srv-d3sq1p8dl3ps73ar54s0"           
 # Configurações do Serviço Render
 $renderServiceType = "web"
 $renderServiceEnv = "python"
-$commitMessage = "Deploy Automático: Ativação via ID Fixo v3.0"
+$commitMessage = "Deploy Automático: Correção final do parsing de URL (v3.1)"
 
 # Headers GitHub e Render
 $headersGitHub = @{
@@ -118,7 +117,7 @@ try {
 }
 
 # ==============================
-# 5️⃣ Deploy no Render
+# 5️⃣ Deploy no Render (v3.1 - Correção da Leitura da URL)
 # ==============================
 Write-Host "`n# 5. Deploy no Render" -ForegroundColor Yellow
 try {
@@ -131,17 +130,21 @@ try {
 
     } else {
         # ✅ ATIVAÇÃO DO REDEPLOY
-        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId/deploys" -Method Post -Headers $headersRender 
+        # Esta chamada aciona o deploy, mas o resultado (Deploy object) não tem a URL completa.
+        Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId/deploys" -Method Post -Headers $headersRender | Out-Null
         Write-Host "✅ Redeploy solicitado com sucesso para o serviço: $renderServiceId" -ForegroundColor Green
+
+        # 🔑 CORREÇÃO: Puxa o objeto Service (que contém a URL) separadamente.
+        $serviceDetails = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId" -Headers $headersRender
+        
+        # Feedback da URL do Render (se disponível)
+        if ($serviceDetails.serviceDetails.url) {
+            Write-Host "🌐 URL do Serviço: $($serviceDetails.serviceDetails.url)" -ForegroundColor Cyan
+        }
     }
 
-    # Feedback da URL do Render (se disponível)
-    if ($deployResponse.service.serviceDetails.url) {
-        Write-Host "🌐 URL do Serviço: $($deployResponse.service.serviceDetails.url)" -ForegroundColor Cyan
-    }
-
 } catch {
-    Write-Host "❌ Deploy Render falhou: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "❌ Deploy Render falhou (Erro de API ou Conexão): $($_.Exception.Message)" -ForegroundColor Red
     
     # Rollback simplificado (Depende da API do Render)
     if ($renderServiceId) {
@@ -153,6 +156,6 @@ try {
 # ==============================
 # 6️⃣ Finalização
 # ==============================
-Write-Host "`n🎉 DEPLOY AUTOMÁTICO CONCLUÍDO COM SUCESSO!" -ForegroundColor Magenta
+Write-Host "`n🎉 DEPLOY AUTOMÁTICO CONCLUÍDO COM SUCESSO! (Solicitado)" -ForegroundColor Magenta
 Write-Host "------------------------------------------------------" -ForegroundColor Magenta
 Write-Host "⚠️ PRÓXIMO PASSO: O script só SOLICITOU o deploy. Verifique o log do Render para confirmar o status FINAL (Sucesso/Falha)." -ForegroundColor Yellow
