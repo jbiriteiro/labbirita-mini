@@ -1,44 +1,43 @@
-async function loadProducts(){
-  const res = await fetch('/api/products');
-  const data = await res.json();
-  const container = document.getElementById('products');
-  container.innerHTML = '';
-  data.products.forEach(p=>{
-    const div = document.createElement('div');
-    div.className = 'product';
-    div.innerHTML = `
-      <div class="info">
-        <div style="font-weight:600">${p.title}</div>
-        <div class="price">R$ ${p.price.toFixed(2)}</div>
-      </div>
-      <button class="btn buy" data-id="${p.id}">Comprar</button>
-    `;
-    container.appendChild(div);
-  });
+// Fetch produtos e renderiza cards
+async function loadProducts() {
+    const res = await fetch("/api/products");
+    const data = await res.json();
+    const container = document.getElementById("product-list");
+    container.innerHTML = "";
 
-  document.querySelectorAll('.buy').forEach(b=>{
-    b.addEventListener('click', async (e)=>{
-      const id = parseInt(e.target.dataset.id);
-      const payload = { product_id: id, customer: { name: "Cliente Teste" } };
-      const r = await fetch('/api/order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      const json = await r.json();
-      showOrder(json);
+    data.products.forEach(p => {
+        const card = document.createElement("div");
+        card.className = "product-card";
+        card.innerHTML = `
+            <h3>${p.title}</h3>
+            <p>R$ ${p.price.toFixed(2)}</p>
+            <button onclick="makeOrder(${p.id})">Comprar</button>
+        `;
+        container.appendChild(card);
     });
-  });
 }
 
-function showOrder(json){
-  document.getElementById('products').classList.add('hidden');
-  document.getElementById('order-result').classList.remove('hidden');
-  document.getElementById('order-json').textContent = JSON.stringify(json, null, 2);
-  document.getElementById('back').onclick = ()=>{
-    document.getElementById('products').classList.remove('hidden');
-    document.getElementById('order-result').classList.add('hidden');
-  };
-}
+// Simula criação de pedido
+async function makeOrder(productId) {
+    const res = await fetch("/api/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ product_id: productId })
+    });
 
-loadProducts();
+    const data = await res.json();
+    const result = document.getElementById("order-result");
+
+    if (data.ok) {
+        const order = data.order;
+        result.innerHTML = `
+            <h3>Pedido Criado!</h3>
+            <p><strong>ID:</strong> ${order.order_id}</p>
+            <p><strong>Produto:</strong> ${order.product}</p>
+            <p><strong>Preço:</strong> R$ ${order.price.toFixed(2)}</p>
+            <p><strong>Tracking:</strong> ${order.tracking_code}</p>
+            <p><strong>Status:</strong> ${order.status}</p>
+            <p><strong>Entrega Estimada:</strong> ${order.estimated_delivery_date}</p>
+        `;
+    } else {
+        result.innerHTML = `<p style="color:red

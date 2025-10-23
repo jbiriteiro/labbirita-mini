@@ -32,7 +32,8 @@ $ErrorActionPreference = "Stop" # Garante que qualquer erro de API ou comando Gi
 $githubUser = "jbiriteiro"
 $repoName   = "labbirita-mini"
 $localPath  = Convert-Path "."   # pasta atual
-$renderServiceId = ""            # se já existe, coloca aqui; senão vazio
+$renderServiceId = "srv-d3sq1p8dl3ps73ar54s0"            # se já existe, coloca aqui; senão vazio
+
 
 # Configurações do Serviço Render
 $renderServiceType = "web"

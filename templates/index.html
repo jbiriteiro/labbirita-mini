@@ -1,31 +1,26 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>LabBirita Mini Store</title>
-  <link rel="stylesheet" href="/static/style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LabBirita Mini Loja</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <header>
-    <h1>LabBirita Mini Store</h1>
-    <p class="tag">Teste rápido — Front + API fake pra deploy no Render</p>
-  </header>
+    <header>
+        <h1>LabBirita Mini Loja</h1>
+    </header>
+    <main>
+        <section id="products">
+            <h2>Produtos Disponíveis</h2>
+            <div id="product-list"></div>
+        </section>
 
-  <main>
-    <section id="products"></section>
-
-    <section id="order-result" class="hidden">
-      <h3>Pedido realizado 🎉</h3>
-      <pre id="order-json"></pre>
-      <button id="back">Voltar às compras</button>
-    </section>
-  </main>
-
-  <footer>
-    <small>Mini loja de teste — não faz entregas reais</small>
-  </footer>
-
-  <script src="/static/script.js"></script>
+        <section id="cart">
+            <h2>Pedido</h2>
+            <div id="order-result"></div>
+        </section>
+    </main>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 </html>
