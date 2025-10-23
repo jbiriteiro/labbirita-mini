@@ -1,49 +1,98 @@
-body {
-    font-family: Arial, sans-serif;
+/* static/style.css */
+
+/* Reset básico */
+* {
     margin: 0;
     padding: 0;
-    background: #f2f2f2;
+    box-sizing: border-box;
 }
 
-header {
-    background: #ff4d4d;
-    color: white;
-    padding: 1rem;
+body {
+    font-family: 'Arial', sans-serif;
+    background: #f9f9f9;
+    color: #333;
+    line-height: 1.5;
+    padding: 20px;
+}
+
+h1 {
     text-align: center;
+    color: #d6336c;
+    margin-bottom: 30px;
+    font-size: 2em;
 }
 
-main {
-    padding: 1rem;
+/* Container de produtos */
+.products {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 20px;
+    justify-items: center;
 }
 
-#product-list {
+/* Card do produto */
+.product {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    width: 100%;
+    max-width: 250px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
+    flex-direction: column;
+    align-items: center;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.product-card {
-    background: white;
-    padding: 1rem;
-    border-radius: 8px;
-    box-shadow: 0 0 5px rgba(0,0,0,0.2);
-    width: 200px;
+.product:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 15px rgba(0,0,0,0.15);
 }
 
-.product-card button {
-    margin-top: 0.5rem;
-    padding: 0.5rem;
-    background: #ff4d4d;
-    color: white;
+.product h2 {
+    font-size: 18px;
+    margin-bottom: 10px;
+    text-align: center;
+    color: #222;
+}
+
+.product p {
+    font-size: 16px;
+    margin-bottom: 15px;
+    color: #555;
+}
+
+.product button {
+    background: #d6336c;
+    color: #fff;
     border: none;
+    padding: 10px 18px;
+    border-radius: 8px;
     cursor: pointer;
-    border-radius: 4px;
+    font-weight: bold;
+    transition: background 0.2s ease;
 }
 
-#order-result {
-    margin-top: 1rem;
-    padding: 1rem;
-    background: white;
-    border-radius: 8px;
-    box-shadow: 0 0 5px rgba(0,0,0,0.2);
+.product button:hover {
+    background: #b02a59;
+}
+
+/* Resultado do pedido */
+#orderResult {
+    margin-top: 40px;
+    text-align: center;
+    font-size: 18px;
+    padding: 15px;
+    background: #e3f7e3;
+    border: 1px solid #c2e6c2;
+    border-radius: 10px;
+    display: none; /* só aparece quando um pedido é feito */
+}
+
+/* Mensagem de erro */
+#orderResult.error {
+    background: #ffe3e3;
+    border: 1px solid #f5c2c2;
+    color: #900;
+    display: block;
 }
