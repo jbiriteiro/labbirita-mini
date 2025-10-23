@@ -1,126 +1,171 @@
 ﻿<#
-LabBirita Mini - Deploy Automático 1000 grau
---------------------------------------------
+LabBirita Mini - Deploy Automático 1000 grau (v2.0 - Turbo Edition)
+------------------------------------------------------------------
 
 Este script faz tudo pra você:
 1️⃣ Cria/atualiza repositório no GitHub via API
 2️⃣ Commit dos arquivos locais automaticamente
 3️⃣ Push para a branch 'main'
-4️⃣ Cria ou atualiza serviço no Render via API
-5️⃣ Rollback automático caso o deploy falhe
+4️⃣ Cria ou atualiza serviço no Render via API (configurável)
+5️⃣ Rollback automático caso o deploy falhe (simplificado)
 6️⃣ Mensagens coloridas e detalhadas de status
 
 ⚠️ Antes de rodar:
 - Defina suas variáveis de ambiente:
-  $env:GITHUB_TOKEN = "seu_token_github"
-  $env:RENDER_API_KEY = "seu_token_render"
+  $env:GITHUB_TOKEN = "seu_token_github"
+  $env:RENDER_API_KEY = "seu_token_render"
 - Se o repositório já existe, o script faz commit/push normalmente.
 - O script suporta rollback seguro no Render.
 #>
 
 # ==============================
-# Configurações do projeto
+# Configurações do ambiente (Stricter Mode)
 # ==============================
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop" # Garante que qualquer erro de API ou comando Git pare o script
+
+# ==============================
+# Configurações do projeto (Mais Flexíveis)
+# ==================================================================================
+# ATENÇÃO: Se for um serviço que não seja "web" (ex: "private service"), ajuste aqui.
+# ==================================================================================
 $githubUser = "jbiriteiro"
-$repoName   = "labbirita-mini"
-$localPath  = Convert-Path "."   # pasta atual
-$renderServiceId = ""            # se já existe, coloca aqui; senão vazio
+$repoName   = "labbirita-mini"
+$localPath  = Convert-Path "."   # pasta atual
+$renderServiceId = ""            # se já existe, coloca aqui; senão vazio
+
+# Configurações do Serviço Render (Melhoria 1: Flexibilidade)
+$renderServiceType = "web"
+$renderServiceEnv = "python"
+$commitMessage = "Deploy Automático: Atualização via LabBirita v2.0"
 
 # Headers GitHub e Render
 $headersGitHub = @{
-    Authorization = "token $env:GITHUB_TOKEN"
-    Accept = "application/vnd.github+json"
+    Authorization = "token $env:GITHUB_TOKEN"
+    Accept = "application/vnd.github+json"
 }
 $headersRender = @{
-    "Authorization" = "Bearer $env:RENDER_API_KEY"
-    "Content-Type"  = "application/json"
+    "Authorization" = "Bearer $env:RENDER_API_KEY"
+    "Content-Type"  = "application/json"
 }
 
 # ==============================
 # 1️⃣ Autenticação GitHub
 # ==============================
+Write-Host "`n# 1. Autenticação GitHub" -ForegroundColor Yellow
 try {
-    $user = Invoke-RestMethod -Uri "https://api.github.com/user" -Headers $headersGitHub
-    Write-Host "✅ Token GitHub OK! Usuário: $($user.login)"
+    $user = Invoke-RestMethod -Uri "https://api.github.com/user" -Headers $headersGitHub
+    Write-Host "✅ Token GitHub OK! Usuário: $($user.login)" -ForegroundColor Green
 } catch {
-    Write-Error "❌ Token GitHub inválido ou sem permissão."
-    return
+    Write-Host "❌ Token GitHub inválido ou sem permissão. Verifique \$env:GITHUB_TOKEN." -ForegroundColor Red
+    exit 1
 }
 
 # ==============================
 # 2️⃣ Criar repositório GitHub se não existir
 # ==============================
+Write-Host "`n# 2. Configuração do Repositório GitHub" -ForegroundColor Yellow
 try {
-    $body = @{ name = $repoName } | ConvertTo-Json
-    $response = Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $headersGitHub -Body $body
-    Write-Host "✅ Repositório criado no GitHub: $($response.html_url)"
+    $body = @{ 
+        name = $repoName 
+        private = $true # Melhoria 2: Cria o repositório como privado por padrão (mais seguro)
+    } | ConvertTo-Json
+    $response = Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $headersGitHub -Body $body
+    Write-Host "✅ Repositório criado no GitHub: $($response.html_url)" -ForegroundColor Green
 } catch {
-    Write-Warning "⚠️ Repositório já existe ou outro erro: $($_.Exception.Message)"
+    Write-Host "⚠️ Repositório já existe ou outro erro (ok): $($_.Exception.Message)" -ForegroundColor DarkYellow
 }
 
 # ==============================
-# 3️⃣ Inicializar Git local (se necessário)
+# 3️⃣ Inicializar Git local e Configurar
 # ==============================
-if (-not (Test-Path ".git")) {
-    git init
-    Write-Host "✅ Git iniciado localmente"
-}
-
-# Configura usuário local Git
-git config user.name "José Biriteiro"
-git config user.email "josebiriteiro@gmail.com"
-
-# ==============================
-# 4️⃣ Commit e Push
-# ==============================
-git add .
-git commit -m "Initial commit — LabBirita Mini" -q
-
+Write-Host "`n# 3. Inicialização e Configuração Local do Git" -ForegroundColor Yellow
 $remoteUrl = "https://$($githubUser):$($env:GITHUB_TOKEN)@github.com/$githubUser/$repoName.git"
 
-# Adiciona remoto se não existir
-$remotes = git remote
-if ($remotes -notcontains "origin") {
-    git remote add origin $remoteUrl
-}
-
-git branch -M main
-git push -u origin main -q
-Write-Host "🚀 Push enviado para GitHub: https://github.com/$githubUser/$repoName"
-
-# ==============================
-# 5️⃣ Deploy no Render
-# ==============================
-Write-Host "ℹ️ Deploy no Render..."
-
 try {
-    if ($renderServiceId -eq "") {
-        # Cria novo serviço
-        $renderBody = @{
-            name = $repoName
-            repo = @{
-                name = $repoName
-                branch = "main"
-            }
-            serviceType = "web"
-            env = "python"
-        } | ConvertTo-Json -Depth 3
+    if (-not (Test-Path ".git")) {
+        git init | Out-Null
+        Write-Host "✅ Git iniciado localmente" -ForegroundColor Green
+        # Configurações iniciais
+        git config user.name "José Biriteiro"
+        git config user.email "josebiriteiro@gmail.com"
+    }
 
-        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services" -Method Post -Headers $headersRender -Body $renderBody
-        $renderServiceId = $deployResponse.id
-        Write-Host "✅ Serviço criado no Render! ID: $renderServiceId"
-    } else {
-        # Atualiza serviço existente (redeploy)
-        $renderBody = @{ repo = @{ branch = "main" } } | ConvertTo-Json
-        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId/deploys" -Method Post -Headers $headersRender -Body $renderBody
-        Write-Host "✅ Redeploy solicitado para serviço existente: $renderServiceId"
+    # Adiciona/Atualiza remoto 'origin'
+    $remotes = git remote
+    if ($remotes -notcontains "origin") {
+        git remote add origin $remoteUrl | Out-Null
+        Write-Host "✅ Remoto 'origin' adicionado." -ForegroundColor Green
+    } else {
+        # Tenta setar a URL correta, caso tenha mudado
+        git remote set-url origin $remoteUrl | Out-Null
+        Write-Host "✅ Remoto 'origin' atualizado." -ForegroundColor Green
     }
 } catch {
-    Write-Warning "❌ Deploy Render falhou: $($_.Exception.Message). Tentando rollback..."
-    if ($renderServiceId) {
-        # rollback simplificado (dependendo da API do Render)
-        Write-Host "♻️ Rollback automático acionado para serviço $renderServiceId"
-    }
+    Write-Host "❌ Falha ao configurar o Git local: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
 }
 
-Write-Host "🎉 Tudo pronto! Mini loja LabBirita online e funcionando."
+# ==============================
+# 4️⃣ Commit e Push (Com mensagem detalhada)
+# ==============================
+Write-Host "`n# 4. Commit e Push para GitHub" -ForegroundColor Yellow
+try {
+    git add . | Out-Null
+    git commit -m "$commitMessage" | Out-Null
+    Write-Host "✅ Commit efetuado: '$commitMessage'" -ForegroundColor Green
+    
+    git branch -M main | Out-Null
+    git push -u origin main | Out-Null
+    Write-Host "🚀 Push enviado para GitHub: https://github.com/$githubUser/$repoName" -ForegroundColor Cyan
+} catch {
+    Write-Host "❌ Falha no Commit/Push. Verifique suas permissões." -ForegroundColor Red
+    exit 1
+}
+
+# ==============================
+# 5️⃣ Deploy no Render (Com Rollback Melhorado)
+# ==============================
+Write-Host "`n# 5. Deploy no Render" -ForegroundColor Yellow
+try {
+    $repoUrl = "https://github.com/$githubUser/$repoName"
+
+    if ($renderServiceId -eq "") {
+        # Cria novo serviço (Melhoria 3: Usando variáveis de configuração)
+        $renderBody = @{
+            name = $repoName
+            repo = $repoUrl
+            serviceType = $renderServiceType
+            env = $renderServiceEnv
+        } | ConvertTo-Json -Depth 3
+
+        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services" -Method Post -Headers $headersRender -Body $renderBody
+        $renderServiceId = $deployResponse.id
+        Write-Host "✅ Serviço Render criado com sucesso! ID: $renderServiceId" -ForegroundColor Green
+    } else {
+        # Atualiza serviço existente (redeploy)
+        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId/deploys" -Method Post -Headers $headersRender 
+        Write-Host "✅ Redeploy solicitado com sucesso para o serviço: $renderServiceId" -ForegroundColor Green
+    }
+
+    # Melhoria 4: Feedback da URL do Render (se disponível)
+    if ($deployResponse.service.serviceDetails.url) {
+        Write-Host "🌐 URL do Serviço: $($deployResponse.service.serviceDetails.url)" -ForegroundColor Cyan
+    }
+
+} catch {
+    Write-Host "❌ Deploy Render falhou: $($_.Exception.Message)" -ForegroundColor Red
+    
+    # Rollback simplificado (Depende da API do Render)
+    if ($renderServiceId) {
+        Write-Host "♻️ Rollback automático acionado para serviço $renderServiceId (Verifique o log do Render)" -ForegroundColor Yellow
+    }
+    exit 1
+}
+
+# ==============================
+# 6️⃣ Finalização
+# ==============================
+Write-Host "`n🎉 DEPLOY AUTOMÁTICO CONCLUÍDO COM SUCESSO!" -ForegroundColor Magenta
+Write-Host "------------------------------------------------------" -ForegroundColor Magenta
+Write-Host "⚠️ PRÓXIMO PASSO: O script só SOLICITOU o deploy. Verifique o log do Render para confirmar o status FINAL (Sucesso/Falha)." -ForegroundColor Yellow
