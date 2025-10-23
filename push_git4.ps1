@@ -1,21 +1,18 @@
 ﻿<#
-LabBirita Mini - Deploy Automático 1000 grau (v2.0 - Turbo Edition)
+LabBirita Mini - Deploy Automático 1000 grau (v3.0 - Service ID Fixo)
 ------------------------------------------------------------------
 
-Este script faz tudo pra você:
+Este script faz tudo pra você, agora usando o ID fixo do Render:
 1️⃣ Cria/atualiza repositório no GitHub via API
 2️⃣ Commit dos arquivos locais automaticamente
 3️⃣ Push para a branch 'main'
-4️⃣ Cria ou atualiza serviço no Render via API (configurável)
+4️⃣ RODE REDEPLOY no serviço Render via API
 5️⃣ Rollback automático caso o deploy falhe (simplificado)
 6️⃣ Mensagens coloridas e detalhadas de status
 
-⚠️ Antes de rodar:
-- Defina suas variáveis de ambiente:
-  $env:GITHUB_TOKEN = "seu_token_github"
-  $env:RENDER_API_KEY = "seu_token_render"
-- Se o repositório já existe, o script faz commit/push normalmente.
-- O script suporta rollback seguro no Render.
+⚠️ ANTES DE RODAR NOVAMENTE:
+- Certifique-se de que o repositório contém o arquivo app.py (Web App Flask/Django).
+- Este script agora vai direto para o REDEPLOY, pois o Service ID está preenchido.
 #>
 
 # ==============================
@@ -25,20 +22,19 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop" # Garante que qualquer erro de API ou comando Git pare o script
 
 # ==============================
-# Configurações do projeto (Mais Flexíveis)
-# ==================================================================================
-# ATENÇÃO: Se for um serviço que não seja "web" (ex: "private service"), ajuste aqui.
-# ==================================================================================
+# Configurações do projeto
+# ==============================
 $githubUser = "jbiriteiro"
 $repoName   = "labbirita-mini"
-$localPath  = Convert-Path "."   # pasta atual
-$renderServiceId = "srv-d3sq1p8dl3ps73ar54s0"            # se já existe, coloca aqui; senão vazio
+$localPath  = Convert-Path "."
 
+# 🛑 ID DO SERVIÇO RENDER - AGORA FIXO!
+$renderServiceId = "srv-d3sq1p8dl3ps73ar54s0"           
 
 # Configurações do Serviço Render
 $renderServiceType = "web"
 $renderServiceEnv = "python"
-$commitMessage = "Deploy Automático: Atualização via LabBirita v2.0"
+$commitMessage = "Deploy Automático: Ativação via ID Fixo v3.0"
 
 # Headers GitHub e Render
 $headersGitHub = @{
@@ -87,18 +83,15 @@ try {
     if (-not (Test-Path ".git")) {
         git init | Out-Null
         Write-Host "✅ Git iniciado localmente" -ForegroundColor Green
-        # Configurações iniciais
         git config user.name "José Biriteiro"
         git config user.email "josebiriteiro@gmail.com"
     }
 
-    # Adiciona/Atualiza remoto 'origin'
     $remotes = git remote
     if ($remotes -notcontains "origin") {
         git remote add origin $remoteUrl | Out-Null
         Write-Host "✅ Remoto 'origin' adicionado." -ForegroundColor Green
     } else {
-        # Tenta setar a URL correta, caso tenha mudado
         git remote set-url origin $remoteUrl | Out-Null
         Write-Host "✅ Remoto 'origin' atualizado." -ForegroundColor Green
     }
@@ -108,7 +101,7 @@ try {
 }
 
 # ==============================
-# 4️⃣ Commit e Push (Com mensagem detalhada)
+# 4️⃣ Commit e Push
 # ==============================
 Write-Host "`n# 4. Commit e Push para GitHub" -ForegroundColor Yellow
 try {
@@ -125,30 +118,19 @@ try {
 }
 
 # ==============================
-# 5️⃣ Deploy no Render (Ajuste Crítico na API)
+# 5️⃣ Deploy no Render
 # ==============================
 Write-Host "`n# 5. Deploy no Render" -ForegroundColor Yellow
 try {
     $repoUrl = "https://github.com/$githubUser/$repoName"
 
     if ($renderServiceId -eq "") {
-        # Cria novo serviço - SINTAXE CORRIGIDA para API do RENDER (type e serviceDetails)
-        $renderBody = @{
-            type = "web_service" # CAMPO OBRIGATÓRIO: deve ser 'web_service', 'private_service', etc.
-            name = $repoName
-            serviceDetails = @{ # Configurações aninhadas
-                env = $renderServiceEnv # 'python', 'node', 'docker', etc.
-                repo = $repoUrl
-                branch = "main"
-            }
-        } | ConvertTo-Json -Depth 4
+        # Esta seção nunca deve ser alcançada, pois $renderServiceId está fixo.
+        Write-Host "❌ Erro Crítico: O Service ID não está fixo. Use a versão anterior do script para criação manual." -ForegroundColor Red
+        exit 1
 
-        $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services" -Method Post -Headers $headersRender -Body $renderBody
-        $renderServiceId = $deployResponse.id
-        Write-Host "✅ Serviço Render criado com sucesso! ID: $renderServiceId" -ForegroundColor Green
     } else {
-        # Atualiza serviço existente (redeploy)
-        # O Render API v1 aceita POST em /deploys para trigger de redeploy.
+        # ✅ ATIVAÇÃO DO REDEPLOY
         $deployResponse = Invoke-RestMethod -Uri "https://api.render.com/v1/services/$renderServiceId/deploys" -Method Post -Headers $headersRender 
         Write-Host "✅ Redeploy solicitado com sucesso para o serviço: $renderServiceId" -ForegroundColor Green
     }
