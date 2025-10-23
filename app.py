@@ -1,24 +1,46 @@
-# =========================================================
-# LabBirita Mini - App Flask 1000 grau
-# =========================================================
-# Arquivo principal: app.py
-# Framework: Flask
-# Variável do Flask: app
-# Funcionalidades:
-# - Exibe página principal
-# - API de produtos
-# - API de pedidos simulados com rastreio
-# - Healthcheck para Render
-# =========================================================
+# app.py
+"""
+LabBirita Mini - Versão Profissional para Testes de Loja e Dropshipping
+----------------------------------------------------------------------
+
+Funcionalidades:
+1️⃣ Servidor Flask para front-end e APIs
+2️⃣ Produtos fake para testes
+3️⃣ Endpoint de pedidos simulados com rastreio
+4️⃣ Healthcheck
+5️⃣ Logging de pedidos
+6️⃣ Preparado para futura integração com gateway de pagamento/dropshipping
+
+Autor: José Biriteiro
+"""
 
 from flask import Flask, jsonify, render_template, request
 from datetime import datetime, timedelta
 import random
 import os
+import logging
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
+# ==============================
+# Configurações básicas do Flask
+# ==============================
+app = Flask(
+    __name__,
+    static_folder="static",     # CSS, JS, imagens
+    template_folder="templates" # HTML
+)
 
-# Produtos de exemplo
+# ==============================
+# Logging de pedidos para testes
+# ==============================
+logging.basicConfig(
+    filename="orders.log",
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+
+# ==============================
+# Produtos de teste (mock)
+# ==============================
 PRODUCTS = [
     {"id": 1, "title": "Fone Bluetooth Sem Fio", "price": 99.0, "cost": 45.0},
     {"id": 2, "title": "Smartwatch Fitness Tracker", "price": 149.0, "cost": 70.0},
@@ -27,37 +49,50 @@ PRODUCTS = [
     {"id": 5, "title": "Lente Macro para Câmera", "price": 59.0, "cost": 18.0},
 ]
 
-# =========================
-# Rotas da aplicação
-# =========================
-
+# ==============================
+# Rotas do Front-End
+# ==============================
 @app.route("/")
 def index():
+    """
+    Página inicial da loja
+    """
     return render_template("index.html")
 
-
-@app.route("/api/products")
-def products():
+# ==============================
+# API para listar produtos
+# ==============================
+@app.route("/api/products", methods=["GET"])
+def list_products():
     return jsonify({"products": PRODUCTS})
 
-
+# ==============================
+# API para criar pedido
+# ==============================
 @app.route("/api/order", methods=["POST"])
-def order():
+def create_order():
+    """
+    Recebe JSON:
+    {
+        "product_id": 1,
+        "customer": {"name": "Fulano", "email": "fulano@mail.com"}
+    }
+    Retorna pedido simulado com rastreio.
+    """
     data = request.get_json() or {}
     product_id = data.get("product_id")
     customer = data.get("customer", {})
-    
-    # Procura produto
+
     prod = next((p for p in PRODUCTS if p["id"] == product_id), None)
     if not prod:
         return jsonify({"error": "Produto não encontrado"}), 404
 
-    # Simula pedido e rastreio
+    # Simula rastreio
     order_id = f"LB{random.randint(100000,999999)}"
     shipped_in_days = random.choice([3, 5, 7, 14, 25])
     ship_date = datetime.utcnow().strftime("%Y-%m-%d")
     est_delivery = (datetime.utcnow() + timedelta(days=shipped_in_days)).strftime("%Y-%m-%d")
-
+    
     tracking = {
         "order_id": order_id,
         "product": prod["title"],
@@ -65,21 +100,25 @@ def order():
         "ship_date": ship_date,
         "estimated_delivery_date": est_delivery,
         "tracking_code": f"BR{random.randint(1000000,9999999)}",
-        "status": "processing"
+        "status": "processing",
+        "customer": customer
     }
+
+    # Log do pedido
+    logging.info(f"Pedido criado: {tracking}")
 
     return jsonify({"ok": True, "order": tracking})
 
+# ==============================
+# Healthcheck para Render/Monitoramento
+# ==============================
+@app.route("/health", methods=["GET"])
+def healthcheck():
+    return jsonify({"status": "OK"}), 200
 
-@app.route("/health")
-def health():
-    return "OK", 200
-
-
-# =========================
+# ==============================
 # Inicialização do servidor
-# =========================
+# ==============================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    # Host 0.0.0.0 necessário pro Render
     app.run(host="0.0.0.0", port=port, debug=True)
