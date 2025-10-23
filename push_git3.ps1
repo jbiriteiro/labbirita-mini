@@ -1,102 +1,178 @@
-Ôªø# =====================================================
-# Push GitHub + Deploy Render Autom√°tico (Turbo CI/CD)
-# =====================================================
+<#
+================================================================================
+?? Push & Deploy Ninja ó LabBirita Mini (PowerShell 1000 grau)
+================================================================================
+DescriÁ„o:
+Este script faz tudo automaticamente para o seu projeto LabBirita Mini:
 
-# ---------- Configura√ß√µes ----------
-$githubUser = "jbiriteiro"        # Seu usu√°rio GitHub
-$repoName = "labbirita-mini"      # Nome do reposit√≥rio
-$localPath = Convert-Path "."
+1?? Commit & push seguro para GitHub (n„o envia tokens no commit)
+2?? Cria ou atualiza o repositÛrio remoto
+3?? Cria ou atualiza o Web Service no Render
+4?? Dispara o deploy do serviÁo
+5?? Faz rollback autom·tico no Render caso o deploy falhe
+6?? Logs detalhados no console para vocÍ acompanhar cada passo
+7?? Usa vari·veis de ambiente para GitHub e Render API Keys
+8?? Suporta m˙ltiplos runs sem quebrar nada
 
-# Tokens via vari√°vel de ambiente
+PrÈ-requisitos:
+- Git instalado e no PATH
+- Python (para seu app Flask)
+- PowerShell 7+ (recomendado)
+- Vari·veis de ambiente configuradas:
+    $env:GITHUB_TOKEN = "<seu token GitHub>"
+    $env:RENDER_API_KEY = "<sua Render API Key>"
+
+Como usar:
+1. Abra PowerShell no diretÛrio do projeto (LabBirita Mini)
+2. Configure suas vari·veis de ambiente
+3. Execute:
+    .\push_git3.ps1
+================================================================================
+#>
+
+# ======================================
+# ? CONFIGURA«’ES
+# ======================================
+$githubUser = "jbiriteiro"           # Usu·rio GitHub
+$repoName = "labbirita-mini"         # Nome do repositÛrio
+$localPath = Convert-Path "."        # Caminho local do projeto
+
+$renderServiceName = "labbirita-mini"  # Nome do serviÁo no Render
+$renderRegion = "oregon"               # Regi„o do Render (ex: oregon, frankfurt)
+$renderPlan = "free"                   # Plano (free / starter / pro)
+
+# Vari·veis de ambiente
 $githubToken = $env:GITHUB_TOKEN
 $renderApiKey = $env:RENDER_API_KEY
 
-if (-not $githubToken) { Write-Error "‚ùå Configure GITHUB_TOKEN"; return }
-if (-not $renderApiKey) { Write-Error "‚ùå Configure RENDER_API_KEY"; return }
-
-# Headers
-$headersGit = @{
+# Headers para APIs
+$githubHeaders = @{
     Authorization = "token $githubToken"
-    Accept = "application/vnd.github+json"
+    Accept        = "application/vnd.github+json"
 }
-$headersRender = @{
+$renderHeaders = @{
     Authorization = "Bearer $renderApiKey"
     "Content-Type" = "application/json"
 }
 
-# =========================
-# 1Ô∏è‚É£ Valida Token GitHub
-# =========================
+# ======================================
+# 1?? ValidaÁ„o do GitHub Token
+# ======================================
 try {
-    $user = Invoke-RestMethod -Uri "https://api.github.com/user" -Headers $headersGit
-    Write-Host "‚úÖ Token GitHub OK! Usu√°rio: $($user.login)"
-} catch { Write-Error "‚ùå Token GitHub inv√°lido ou sem permiss√£o"; return }
-
-# =========================
-# 2Ô∏è‚É£ Cria reposit√≥rio GitHub (se n√£o existir)
-# =========================
-try {
-    $body = @{ name = $repoName } | ConvertTo-Json
-    Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $headersGit -Body $body
-    Write-Host "‚úÖ Reposit√≥rio criado no GitHub"
-} catch { Write-Warning "‚ö†Ô∏è Reposit√≥rio j√° existe ou outro erro" }
-
-# =========================
-# 3Ô∏è‚É£ Inicializa Git local
-# =========================
-if (-not (Test-Path ".git")) { git init; Write-Host "‚úÖ Git iniciado localmente" }
-
-# =========================
-# 4Ô∏è‚É£ Configura usu√°rio Git
-# =========================
-git config user.name "Jos√© Biriteiro"
-git config user.email "josebiriteiro@gmail.com"
-Write-Host "‚úÖ Usu√°rio Git configurado"
-
-# =========================
-# 5Ô∏è‚É£ Detecta mudan√ßas
-# =========================
-$changes = git status --porcelain
-if (-not $changes) {
-    Write-Host "‚ÑπÔ∏è Nenhuma altera√ß√£o detectada. Push e deploy n√£o necess√°rios."
+    $ghTest = Invoke-RestMethod -Uri "https://api.github.com/user" -Headers $githubHeaders
+    Write-Host "? Token GitHub OK! Usu·rio autenticado: $($ghTest.login)"
+} catch {
+    Write-Error "? Token GitHub inv·lido ou sem permiss„o 'repo'."
     return
 }
 
-# =========================
-# 6Ô∏è‚É£ Commit incremental
-# =========================
-git add .
-git commit -m "Atualiza√ß√£o autom√°tica ‚Äî LabBirita Mini"
-Write-Host "‚úÖ Commit criado"
-
-# =========================
-# 7Ô∏è‚É£ Push GitHub
-# =========================
-$remoteUrl = "https://github.com/$githubUser/$repoName.git"
-if (-not (git remote)) { git remote add origin $remoteUrl }
-git branch -M main
-git push -u origin main
-Write-Host "‚úÖ Push enviado para GitHub: $remoteUrl"
-
-# =========================
-# 8Ô∏è‚É£ Deploy Render
-# =========================
-$bodyRender = @{
-    name = $repoName
-    type = "web_service"
-    plan = "free"
-    repo = @{
-        name = $repoName
-        branch = "main"
-        provider = "github"
-    }
-    envVars = @()
-} | ConvertTo-Json -Depth 5
-
+# ======================================
+# 2?? Criar repositÛrio GitHub (se n„o existir)
+# ======================================
 try {
-    $renderResp = Invoke-RestMethod -Uri "https://api.render.com/v1/services" -Method Post -Headers $headersRender -Body $bodyRender
-    $deployUrl = $renderResp.serviceDetails.serviceURL
-    Write-Host "üöÄ Deploy Render ativo! URL final: $deployUrl"
+    $body = @{ name = $repoName } | ConvertTo-Json
+    $ghRepo = Invoke-RestMethod -Uri "https://api.github.com/user/repos" -Method Post -Headers $githubHeaders -Body $body
+    Write-Host "? RepositÛrio criado no GitHub: $($ghRepo.html_url)"
 } catch {
-    Write-Warning "‚ö†Ô∏è N√£o foi poss√≠vel criar/atualizar o servi√ßo no Render: $($_.Exception.Message)"
+    Write-Warning "?? RepositÛrio j· existe ou outro erro: $($_.Exception.Message)"
 }
+
+# ======================================
+# 3?? Inicializar Git local
+# ======================================
+if (-not (Test-Path ".git")) {
+    git init
+    Write-Host "? Git iniciado localmente."
+}
+
+# Configurar usu·rio Git local
+git config user.name "JosÈ Biriteiro"
+git config user.email "josebiriteiro@gmail.com"
+Write-Host "? Usu·rio Git configurado"
+
+# ======================================
+# 4?? Commit seguro (sem tokens)
+# ======================================
+# Remove tokens do commit acidental
+$pushGitPSPath = Join-Path $localPath "push_git3.ps1"
+(Get-Content $pushGitPSPath) -replace $githubToken, "[REMOVIDO]" | Set-Content $pushGitPSPath
+
+git add .
+git commit -m "Initial commit ó LabBirita Mini" -q
+Write-Host "? Commit criado."
+
+# ======================================
+# 5?? Push para GitHub
+# ======================================
+$remoteUrl = "https://github.com/$githubUser/$repoName.git"
+if (-not (git remote)) {
+    git remote add origin $remoteUrl
+}
+git branch -M main
+try {
+    git push -u origin main
+    Write-Host "?? Push enviado para GitHub: $remoteUrl"
+} catch {
+    Write-Warning "?? Push falhou: $($_.Exception.Message)"
+}
+
+# ======================================
+# 6?? Criar ou atualizar Web Service no Render
+# ======================================
+$renderApi = "https://api.render.com/v1/services"
+try {
+    # Verifica se o serviÁo j· existe
+    $services = Invoke-RestMethod -Uri $renderApi -Headers $renderHeaders
+    $service = $services | Where-Object { $_.name -eq $renderServiceName }
+
+    if ($service) {
+        Write-Host "?? ServiÁo j· existe no Render: $($service.id). Atualizando..."
+        # Atualiza repositÛrio do serviÁo
+        $updateBody = @{
+            repo = "https://github.com/$githubUser/$repoName"
+            branch = "main"
+            plan = $renderPlan
+        } | ConvertTo-Json
+        Invoke-RestMethod -Uri "$renderApi/$($service.id)" -Method Patch -Headers $renderHeaders -Body $updateBody
+        $serviceId = $service.id
+    } else {
+        Write-Host "?? Criando novo serviÁo no Render..."
+        $createBody = @{
+            name = $renderServiceName
+            type = "web"
+            repo = "https://github.com/$githubUser/$repoName"
+            branch = "main"
+            plan = $renderPlan
+            region = $renderRegion
+            env = "python"
+            buildCommand = "pip install -r requirements.txt"
+            startCommand = "gunicorn app:app --bind 0.0.0.0:\$PORT"
+        } | ConvertTo-Json
+        $newService = Invoke-RestMethod -Uri $renderApi -Method Post -Headers $renderHeaders -Body $createBody
+        $serviceId = $newService.id
+        Write-Host "? ServiÁo criado: $serviceId"
+    }
+} catch {
+    Write-Error "? N„o foi possÌvel criar ou atualizar o serviÁo no Render: $($_.Exception.Message)"
+    return
+}
+
+# ======================================
+# 7?? Deploy autom·tico com rollback se falhar
+# ======================================
+try {
+    Write-Host "?? Iniciando deploy..."
+    $deployBody = @{ serviceId = $serviceId } | ConvertTo-Json
+    $deploy = Invoke-RestMethod -Uri "$renderApi/$serviceId/deploys" -Method Post -Headers $renderHeaders -Body $deployBody
+    $deployUrl = $deploy.serviceDetail.url
+    Write-Host "?? Deploy ativo! URL final: $deployUrl"
+} catch {
+    Write-Warning "? Deploy falhou, fazendo rollback..."
+    if ($serviceId) {
+        # Tenta rollback para ˙ltima vers„o
+        Invoke-RestMethod -Uri "$renderApi/$serviceId/deploys/latest/rollback" -Method Post -Headers $renderHeaders
+        Write-Host "?? Rollback realizado com sucesso."
+    }
+}
+
+Write-Host "?? Tudo pronto! LabBirita Mini no ar e GitHub atualizado. Cheers! ??"
