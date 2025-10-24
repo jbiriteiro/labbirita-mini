@@ -4,7 +4,7 @@
 # Autor: José Biriteiro
 # Projeto: https://github.com/jbiriteiro/labbirita-mini
 # Data do Código: 24 de outubro de 2025
-# Versão: 7.2 (Visual Aprimorado)
+# Versão: 7.3 (Logs Estilizados)
 #
 # Descrição:
 # Aplicação GUI para automatizar o deploy seguro do LabBirita Mini no GitHub + Render,
@@ -62,7 +62,7 @@ LOG_FILE = "deploy_log.txt"
 
 
 def append_log_file(line: str):
-    """Grava uma linha no arquivo de log com timestamp."""
+    """Grava uma linha no arquivo de log com timestamp (texto puro)."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -204,10 +204,10 @@ class DeployWorker(QThread):
 class DeployGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LabBirita Mini - Deploy Pro Final v7.2")
-        self.resize(1020, 780)
+        self.setWindowTitle("LabBirita Mini - Deploy Pro Final v7.3")
+        self.resize(1040, 800)
 
-        # Estilo visual moderno e legível
+        # Estilo visual moderno
         self.setStyleSheet("""
             QMainWindow { background-color: #f8f9fa; }
             QLabel { font-family: 'Segoe UI'; font-size: 11pt; color: #212529; }
@@ -253,14 +253,12 @@ class DeployGUI(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        # Cabeçalho destacado
-        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Final v7.2")
+        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Final v7.3")
         header_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
         header_label.setAlignment(Qt.AlignCenter)
         header_label.setStyleSheet("color: #0d6efd; margin: 12px 0;")
         main_layout.addWidget(header_label)
 
-        # Carregar .env + tokens
         cred_layout = QHBoxLayout()
         self.load_btn = QPushButton("📂 Carregar .env")
         self.load_btn.setToolTip("Selecione o arquivo .env com GITHUB_TOKEN e RENDER_API_KEY")
@@ -295,7 +293,6 @@ class DeployGUI(QMainWindow):
 
         main_layout.addLayout(cred_layout)
 
-        # Modo Dev/Prod
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(QLabel("Modo de execução local (conforme README):"))
         self.mode_combo = QComboBox()
@@ -303,7 +300,6 @@ class DeployGUI(QMainWindow):
         mode_layout.addWidget(self.mode_combo)
         main_layout.addLayout(mode_layout)
 
-        # Status de segurança com cores vivas
         sec_layout = QHBoxLayout()
         self.gitignore_status = QLabel("❓ .env no .gitignore?")
         sec_layout.addWidget(self.gitignore_status)
@@ -316,7 +312,6 @@ class DeployGUI(QMainWindow):
 
         main_layout.addLayout(sec_layout)
 
-        # Botões principais
         btn_layout = QHBoxLayout()
         self.verify_token_btn = QPushButton("🔍 Verificar Token GitHub")
         self.verify_token_btn.setToolTip("Testa se o GITHUB_TOKEN é válido via API")
@@ -360,23 +355,24 @@ class DeployGUI(QMainWindow):
 
         main_layout.addLayout(btn_layout)
 
-        # Área de logs — mais legível e destacada
+        # Área de logs estilizada com HTML
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Consolas", 11))
         self.log_text.setStyleSheet("""
-            background-color: #f1f3f5;
+            background-color: #f8f9fa;
             border: 1px solid #dee2e6;
             border-radius: 6px;
             padding: 10px;
             color: #212529;
+            font-family: Consolas, monospace;
+            font-size: 11pt;
         """)
+        self.log_text.setHtml("")  # Inicia vazio
         main_layout.addWidget(self.log_text)
 
-        self.log_message("[INFO] Bem-vindo ao Deploy Pro Final v7.2!")
+        self.log_message("[INFO] Bem-vindo ao Deploy Pro Final v7.3!")
         self.log_message("[DICA] Clique em 'Carregar .env' para começar.")
-
-    # === FUNÇÕES DE INTERAÇÃO (mantidas idênticas à lógica anterior) ===
 
     def _toggle_echo(self, field: QLineEdit, btn: QPushButton):
         if field.echoMode() == QLineEdit.Password:
@@ -568,7 +564,7 @@ class DeployGUI(QMainWindow):
             QMessageBox.critical(self, "Erro", f"Erro: {str(e)}")
 
     def clear_logs(self):
-        self.log_text.clear()
+        self.log_text.setHtml("")  # Limpa HTML
         self.log_message("[INFO] Logs limpos.")
 
     def confirm_exit(self):
@@ -580,7 +576,53 @@ class DeployGUI(QMainWindow):
             self.close()
 
     def log_message(self, msg: str):
-        self.log_text.append(msg)
+        """Exibe mensagem estilizada com ícones, cores e alinhamento."""
+        if msg.startswith("["):
+            if "]" in msg:
+                end_bracket = msg.index("]") + 1
+                prefix = msg[1:end_bracket-1]
+                content = msg[end_bracket:].strip()
+            else:
+                prefix, content = "LOG", msg
+        else:
+            prefix, content = "LOG", msg
+
+        style_map = {
+            "INÍCIO":     ("🚀", "#0d6efd", "bold"),
+            "CONCLUÍDO":  ("🎉", "#198754", "bold"),
+            "SUCESSO":    ("✅", "#198754", "normal"),
+            "OK":         ("✅", "#198754", "normal"),
+            "INFO":       ("ℹ️", "#0dcaf0", "normal"),
+            "DICA":       ("💡", "#6c757d", "normal"),
+            "AÇÃO":       ("⚡", "#6f42c1", "normal"),
+            "GIT":        ("📤", "#dc3545", "normal"),
+            "GITHUB":     ("🔍", "#202020", "normal"),
+            "RENDER":     ("🔄", "#fd7e14", "normal"),
+            "PREVIEW":    ("📊", "#20c997", "normal"),
+            "AVISO":      ("⚠️", "#ffc107", "bold"),
+            "ERRO":       ("❌", "#dc3545", "bold"),
+            "BACKUP":     ("💾", "#6610f2", "normal"),
+            "LIMPANDO":   ("🧼", "#d63384", "normal"),
+            "INFORMAÇÃO": ("📖", "#6c757d", "normal"),
+            "LOG":        ("📝", "#6c757d", "normal"),
+        }
+
+        icon, color, weight = style_map.get(prefix, ("🔹", "#6c757d", "normal"))
+
+        html_line = (
+            f'<div style="margin: 2px 0; font-family: Consolas, monospace; font-size: 11pt;">'
+            f'  <span style="color: {color}; font-weight: {weight}; width: 90px; display: inline-block;">'
+            f'    {icon} [{prefix}]'
+            f'  </span>'
+            f'  <span style="color: #212529;">{content}</span>'
+            f'</div>'
+        )
+
+        cursor = self.log_text.textCursor()
+        cursor.movePosition(cursor.End)
+        self.log_text.setTextCursor(cursor)
+        self.log_text.insertHtml(html_line + "<br>")
+
         append_log_file(msg)
         self.log_text.verticalScrollBar().setValue(self.log_text.verticalScrollBar().maximum())
 
