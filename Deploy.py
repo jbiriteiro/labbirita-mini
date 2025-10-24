@@ -1,50 +1,39 @@
 # =============================================================================
-# LabBirita Mini - Deploy Seguro com Interface Gráfica (PyQt5)
+# LabBirita Mini - Deploy Seguro com Interface Gráfica (PyQt5) - Versão Plus
 # =============================================================================
 # Autor: José Biriteiro
 # Projeto: https://github.com/jbiriteiro/labbirita-mini
 # Data: 24 de outubro de 2025
-# Versão: 5.5 (corrigida e final)
+# Versão: 6.0
 #
-# Descrição:
-# Aplicação GUI para deploy seguro do LabBirita Mini no GitHub + Render.
-# Foco em: prevenção de vazamento de segredos, transparência e usabilidade.
-#
-# Funcionalidades:
-#   📂 Carregar .env
-#   👁️ Revelar/ocultar tokens reais (não máscaras!)
-#   🔍 Verificar token do GitHub (log + msgbox)
-#   📤 Deploy com preview de arquivos
-#   🔄 Redeploy no Render (trata HTTP 202 como sucesso)
-#   🧼 Limpar histórico com git-filter-repo + backup
-#   🧹 Limpar tela
-#   🚪 Finalizar com confirmação
+# Novas funcionalidades:
+#   🌐 Abrir no Render
+#   💾 Lembrar último .env
+#   ⚙️ Modo Dev/Prod
+#   🔄 Verificar atualizações
+#   📤 Exportar log
 #
 # Requisitos:
 #   pip install python-dotenv requests pyqt5 git-filter-repo
-#
-# Aviso:
-#   - Nunca commitar .env
-#   - Revogue tokens comprometidos imediatamente
 # =============================================================================
 
 import sys
 import os
 import subprocess
+import webbrowser
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QTextEdit, QLabel, QMessageBox, QLineEdit, QFileDialog
+    QPushButton, QTextEdit, QLabel, QMessageBox, QLineEdit, QFileDialog, QComboBox
 )
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QSettings
 from PyQt5.QtGui import QFont
 
 
 class DeployWorker(QThread):
-    """Worker para operações de deploy em segundo plano."""
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str)
     security_check_signal = pyqtSignal(dict)
@@ -138,47 +127,44 @@ class DeployWorker(QThread):
 
 
 class DeployGUI(QMainWindow):
-    """Interface gráfica principal do deploy seguro."""
-
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LabBirita Mini - Deploy Pro")
-        self.resize(880, 700)
+        self.setWindowTitle("LabBirita Mini - Deploy Pro Plus")
+        self.resize(900, 720)
         self.setStyleSheet("background-color: #f9f9f9; font-family: 'Segoe UI';")
 
+        # Configurações persistentes
+        self.settings = QSettings("Biriteiro", "LabBiritaDeploy")
         self.github_token = ""
         self.render_api_key = ""
         self.render_service_id = "srv-d3sq1p8dl3ps73ar54s0"
-        self.env_path = ""
+        self.env_path = self.settings.value("last_env_path", "")
+        self.render_url = "https://labbirita-mini.onrender.com"
 
         self._setup_ui()
 
     def _setup_ui(self):
-        """Configura todos os widgets da interface."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro")
+        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Plus")
         header_label.setFont(QFont("Segoe UI", 14, QFont.Bold))
         header_label.setAlignment(Qt.AlignCenter)
         header_label.setStyleSheet("color: #2c3e50; padding: 10px;")
         main_layout.addWidget(header_label)
 
-        # === LINHA COMPLETA: Carregar .env + Tokens com olhinho ===
+        # Carregar .env + tokens com olhinho
         cred_layout = QHBoxLayout()
-
-        # Botão Carregar .env
         self.load_btn = QPushButton("📂 Carregar .env")
         self.load_btn.setToolTip("Selecione o arquivo .env com suas credenciais")
         self.load_btn.clicked.connect(self.load_env_file)
         cred_layout.addWidget(self.load_btn)
 
-        # GITHUB_TOKEN com olhinho
         token_layout = QHBoxLayout()
         self.token_field = QLineEdit()
         self.token_field.setPlaceholderText("GITHUB_TOKEN")
-        self.token_field.setEchoMode(QLineEdit.Password)  # Oculta visualmente, mas mantém valor real
+        self.token_field.setEchoMode(QLineEdit.Password)
         token_layout.addWidget(self.token_field)
 
         self.toggle_token_btn = QPushButton("👁️")
@@ -188,7 +174,6 @@ class DeployGUI(QMainWindow):
         token_layout.addWidget(self.toggle_token_btn)
         cred_layout.addLayout(token_layout)
 
-        # RENDER_API_KEY com olhinho
         render_layout = QHBoxLayout()
         self.render_field = QLineEdit()
         self.render_field.setPlaceholderText("RENDER_API_KEY")
@@ -203,6 +188,14 @@ class DeployGUI(QMainWindow):
         cred_layout.addLayout(render_layout)
 
         main_layout.addLayout(cred_layout)
+
+        # Modo Dev/Prod
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("Modo de execução local:"))
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["Desenvolvimento (python app.py)", "Produção (gunicorn)"])
+        mode_layout.addWidget(self.mode_combo)
+        main_layout.addLayout(mode_layout)
 
         # Status de segurança
         sec_layout = QHBoxLayout()
@@ -223,36 +216,42 @@ class DeployGUI(QMainWindow):
         # Botões principais
         btn_layout = QHBoxLayout()
         self.verify_token_btn = QPushButton("🔍 Verificar Token GitHub")
-        self.verify_token_btn.setToolTip("Testa se o GITHUB_TOKEN é válido e tem permissão de acesso")
+        self.verify_token_btn.setToolTip("Testa se o GITHUB_TOKEN é válido")
         self.verify_token_btn.clicked.connect(self.verify_github_token)
         btn_layout.addWidget(self.verify_token_btn)
 
         self.commit_push_btn = QPushButton("📤 Enviar Atualizações")
-        self.commit_push_btn.setToolTip("Mostra preview dos arquivos e envia para o GitHub")
+        self.commit_push_btn.setToolTip("Mostra preview e envia para o GitHub")
         self.commit_push_btn.clicked.connect(self.start_commit_push)
         btn_layout.addWidget(self.commit_push_btn)
 
         self.redeploy_btn = QPushButton("🔄 Reiniciar Serviço no Render")
-        self.redeploy_btn.setToolTip("Aciona redeploy no serviço Render")
+        self.redeploy_btn.setToolTip("Aciona redeploy no Render")
         self.redeploy_btn.clicked.connect(self.start_redeploy)
         btn_layout.addWidget(self.redeploy_btn)
 
+        self.open_render_btn = QPushButton("🌐 Abrir no Render")
+        self.open_render_btn.setToolTip("Abre o site no navegador")
+        self.open_render_btn.clicked.connect(self.open_render_site)
+        btn_layout.addWidget(self.open_render_btn)
+
         self.clean_history_btn = QPushButton("🧼 Limpar Histórico")
-        self.clean_history_btn.setToolTip(
-            "Remove .env de TODO o histórico do Git (commits, branches, tags).\n"
-            "Cria backup automático antes de limpar.\n"
-            "Use SOMENTE se já commitou .env por acidente."
-        )
+        self.clean_history_btn.setToolTip("Remove .env de TODO o histórico")
         self.clean_history_btn.clicked.connect(self.backup_and_clean_history)
         btn_layout.addWidget(self.clean_history_btn)
 
         self.clear_logs_btn = QPushButton("🧹 Limpar Tela")
-        self.clear_logs_btn.setToolTip("Limpa todos os logs anteriores")
+        self.clear_logs_btn.setToolTip("Limpa logs")
         self.clear_logs_btn.clicked.connect(self.clear_logs)
         btn_layout.addWidget(self.clear_logs_btn)
 
+        self.export_log_btn = QPushButton("📤 Exportar Log")
+        self.export_log_btn.setToolTip("Salva o log em um arquivo")
+        self.export_log_btn.clicked.connect(self.export_log)
+        btn_layout.addWidget(self.export_log_btn)
+
         self.exit_btn = QPushButton("🚪 Finalizar")
-        self.exit_btn.setToolTip("Fecha o aplicativo")
+        self.exit_btn.setToolTip("Fecha o app")
         self.exit_btn.clicked.connect(self.confirm_exit)
         btn_layout.addWidget(self.exit_btn)
 
@@ -266,19 +265,53 @@ class DeployGUI(QMainWindow):
         main_layout.addWidget(self.log_text)
 
         self.update_buttons_state()
+        self.check_for_updates()
 
-    # === FUNÇÕES PRINCIPAIS ===
+    # === NOVAS FUNÇÕES ===
+
+    def open_render_site(self):
+        """Abre o site do LabBirita Mini no navegador."""
+        webbrowser.open(self.render_url)
+        self.log_message(f"[INFO] Abrindo {self.render_url} no navegador...")
+
+    def export_log(self):
+        """Exporta o conteúdo do log para um arquivo."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_name = f"deploy_log_{timestamp}.txt"
+        file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Log", default_name, "Arquivos de Texto (*.txt)")
+        if file_path:
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(self.log_text.toPlainText())
+            self.log_message(f"[INFO] Log exportado para: {file_path}")
+            QMessageBox.information(self, "✅ Log Exportado", f"Log salvo em:\n{file_path}")
+
+    def check_for_updates(self):
+        """Verifica se há uma versão nova no GitHub."""
+        try:
+            resp = requests.get(
+                "https://raw.githubusercontent.com/jbiriteiro/labbirita-mini/main/deploy_gui_pro.py",
+                timeout=5
+            )
+            if resp.status_code == 200:
+                first_line = resp.text.split("\n")[0]
+                if "Versão: 6." not in first_line:
+                    self.log_message("[AVISO] Nova versão disponível no GitHub!")
+        except:
+            pass  # Falha silenciosa
+
+    # === FUNÇÕES EXISTENTES (ATUALIZADAS) ===
 
     def load_env_file(self):
-        """Carrega arquivo .env e atualiza campos com o VALOR REAL (não máscara)."""
-        file_path, _ = QFileDialog.getOpenFileName(self, "Selecionar .env", "", "Arquivos .env (*.env)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Selecionar .env", self.env_path, "Arquivos .env (*.env)"
+        )
         if file_path:
             self.env_path = file_path
+            self.settings.setValue("last_env_path", file_path)
             load_dotenv(file_path, override=True)
             self.github_token = os.getenv("GITHUB_TOKEN", "")
             self.render_api_key = os.getenv("RENDER_API_KEY", "")
 
-            # ✅ IMPORTANTE: Define o VALOR REAL nos campos (não "••••")
             self.token_field.setText(self.github_token)
             self.render_field.setText(self.render_api_key)
 
@@ -288,16 +321,43 @@ class DeployGUI(QMainWindow):
         else:
             self.log_message("[INFO] Seleção de .env cancelada.")
 
-    def update_buttons_state(self):
-        has_token = bool(self.github_token)
-        has_render_key = bool(self.render_api_key)
-        self.verify_token_btn.setEnabled(has_token)
-        self.commit_push_btn.setEnabled(has_token)
-        self.redeploy_btn.setEnabled(has_render_key)
-        self.clean_history_btn.setEnabled(True)
+    def start_redeploy(self):
+        if not self.render_api_key:
+            QMessageBox.warning(self, "Aviso", "Carregue um .env com RENDER_API_KEY válido.")
+            return
+
+        self.log_message("[RENDER] Acionando redeploy...")
+        try:
+            headers = {"Authorization": f"Bearer {self.render_api_key}"}
+            resp = requests.post(
+                f"https://api.render.com/v1/services/{self.render_service_id}/deploys",
+                headers=headers,
+                timeout=15
+            )
+
+            if resp.status_code in [201, 202]:
+                status_msg = "Aceito" if resp.status_code == 202 else "Criado"
+                self.log_message(f"[OK] Redeploy {status_msg} com sucesso! (HTTP {resp.status_code})")
+                url = f"https://dashboard.render.com/web/services/{self.render_service_id}"
+                QMessageBox.information(
+                    self,
+                    "✅ Redeploy Iniciado",
+                    f"Redeploy {status_msg}!\nStatus HTTP: {resp.status_code}\n\n"
+                    f"Verifique o progresso em:\n{url}"
+                )
+            else:
+                error_msg = f"Falha no Render (HTTP {resp.status_code}): {resp.text[:200]}"
+                self.log_message(f"[ERRO] {error_msg}")
+                QMessageBox.critical(self, "❌ Falha no Redeploy", error_msg)
+
+        except Exception as e:
+            error_msg = f"Erro ao comunicar com Render: {str(e)}"
+            self.log_message(f"[ERRO] {error_msg}")
+            QMessageBox.critical(self, "❌ Erro de Conexão", error_msg)
+
+    # ... (todas as outras funções permanecem iguais: toggle, verify, backup, etc.)
 
     def toggle_token_visibility(self):
-        """Alterna visibilidade do token do GitHub."""
         if self.token_field.echoMode() == QLineEdit.Password:
             self.token_field.setEchoMode(QLineEdit.Normal)
             self.toggle_token_btn.setText("🔒")
@@ -306,7 +366,6 @@ class DeployGUI(QMainWindow):
             self.toggle_token_btn.setText("👁️")
 
     def toggle_render_visibility(self):
-        """Alterna visibilidade da chave da API do Render."""
         if self.render_field.echoMode() == QLineEdit.Password:
             self.render_field.setEchoMode(QLineEdit.Normal)
             self.toggle_render_btn.setText("🔒")
@@ -436,40 +495,14 @@ class DeployGUI(QMainWindow):
         self.worker.finished_signal.connect(self.on_deploy_finished)
         self.worker.start()
 
-    def start_redeploy(self):
-        """Aciona redeploy no Render — trata HTTP 202 como sucesso."""
-        if not self.render_api_key:
-            QMessageBox.warning(self, "Aviso", "Carregue um .env com RENDER_API_KEY válido.")
-            return
-
-        self.log_message("[RENDER] Acionando redeploy...")
-        try:
-            headers = {"Authorization": f"Bearer {self.render_api_key}"}
-            resp = requests.post(
-                f"https://api.render.com/v1/services/{self.render_service_id}/deploys",
-                headers=headers,
-                timeout=15
-            )
-
-            if resp.status_code in [201, 202]:
-                status_msg = "Aceito" if resp.status_code == 202 else "Criado"
-                self.log_message(f"[OK] Redeploy {status_msg} com sucesso! (HTTP {resp.status_code})")
-                url = f"https://dashboard.render.com/web/services/{self.render_service_id}"
-                QMessageBox.information(
-                    self,
-                    "✅ Redeploy Iniciado",
-                    f"Redeploy {status_msg}!\nStatus HTTP: {resp.status_code}\n\n"
-                    f"Verifique o progresso em:\n{url}"
-                )
-            else:
-                error_msg = f"Falha no Render (HTTP {resp.status_code}): {resp.text[:200]}"
-                self.log_message(f"[ERRO] {error_msg}")
-                QMessageBox.critical(self, "❌ Falha no Redeploy", error_msg)
-
-        except Exception as e:
-            error_msg = f"Erro ao comunicar com Render: {str(e)}"
-            self.log_message(f"[ERRO] {error_msg}")
-            QMessageBox.critical(self, "❌ Erro de Conexão", error_msg)
+    def update_buttons_state(self):
+        has_token = bool(self.github_token)
+        has_render_key = bool(self.render_api_key)
+        self.verify_token_btn.setEnabled(has_token)
+        self.commit_push_btn.setEnabled(has_token)
+        self.redeploy_btn.setEnabled(has_render_key)
+        self.open_render_btn.setEnabled(True)
+        self.clean_history_btn.setEnabled(True)
 
     def clear_logs(self):
         self.log_text.clear()
