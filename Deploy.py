@@ -4,7 +4,7 @@
 # Autor: José Biriteiro
 # Projeto: https://github.com/jbiriteiro/labbirita-mini
 # Data: 24 de outubro de 2025
-# Versão: 5.4 (corrigida)
+# Versão: 5.5 (corrigida e final)
 #
 # Descrição:
 # Aplicação GUI para deploy seguro do LabBirita Mini no GitHub + Render.
@@ -12,10 +12,10 @@
 #
 # Funcionalidades:
 #   📂 Carregar .env
-#   👁️ Revelar/ocultar tokens
+#   👁️ Revelar/ocultar tokens reais (não máscaras!)
 #   🔍 Verificar token do GitHub (log + msgbox)
 #   📤 Deploy com preview de arquivos
-#   🔄 Redeploy no Render
+#   🔄 Redeploy no Render (trata HTTP 202 como sucesso)
 #   🧼 Limpar histórico com git-filter-repo + backup
 #   🧹 Limpar tela
 #   🚪 Finalizar com confirmação
@@ -178,7 +178,7 @@ class DeployGUI(QMainWindow):
         token_layout = QHBoxLayout()
         self.token_field = QLineEdit()
         self.token_field.setPlaceholderText("GITHUB_TOKEN")
-        self.token_field.setEchoMode(QLineEdit.Password)
+        self.token_field.setEchoMode(QLineEdit.Password)  # Oculta visualmente, mas mantém valor real
         token_layout.addWidget(self.token_field)
 
         self.toggle_token_btn = QPushButton("👁️")
@@ -270,15 +270,18 @@ class DeployGUI(QMainWindow):
     # === FUNÇÕES PRINCIPAIS ===
 
     def load_env_file(self):
-        """Carrega arquivo .env e atualiza campos com feedback visual."""
+        """Carrega arquivo .env e atualiza campos com o VALOR REAL (não máscara)."""
         file_path, _ = QFileDialog.getOpenFileName(self, "Selecionar .env", "", "Arquivos .env (*.env)")
         if file_path:
             self.env_path = file_path
             load_dotenv(file_path, override=True)
             self.github_token = os.getenv("GITHUB_TOKEN", "")
             self.render_api_key = os.getenv("RENDER_API_KEY", "")
-            self.token_field.setText("••••••••••••••••••••" if self.github_token else "")
-            self.render_field.setText("••••••••••••••••••••" if self.render_api_key else "")
+
+            # ✅ IMPORTANTE: Define o VALOR REAL nos campos (não "••••")
+            self.token_field.setText(self.github_token)
+            self.render_field.setText(self.render_api_key)
+
             self.update_buttons_state()
             self.log_message(f"[INFO] .env carregado de: {file_path}")
             QMessageBox.information(self, "✅ Arquivo Carregado", "Arquivo .env carregado com sucesso!")
@@ -294,6 +297,7 @@ class DeployGUI(QMainWindow):
         self.clean_history_btn.setEnabled(True)
 
     def toggle_token_visibility(self):
+        """Alterna visibilidade do token do GitHub."""
         if self.token_field.echoMode() == QLineEdit.Password:
             self.token_field.setEchoMode(QLineEdit.Normal)
             self.toggle_token_btn.setText("🔒")
@@ -302,6 +306,7 @@ class DeployGUI(QMainWindow):
             self.toggle_token_btn.setText("👁️")
 
     def toggle_render_visibility(self):
+        """Alterna visibilidade da chave da API do Render."""
         if self.render_field.echoMode() == QLineEdit.Password:
             self.render_field.setEchoMode(QLineEdit.Normal)
             self.toggle_render_btn.setText("🔒")
@@ -432,9 +437,11 @@ class DeployGUI(QMainWindow):
         self.worker.start()
 
     def start_redeploy(self):
+        """Aciona redeploy no Render — trata HTTP 202 como sucesso."""
         if not self.render_api_key:
             QMessageBox.warning(self, "Aviso", "Carregue um .env com RENDER_API_KEY válido.")
             return
+
         self.log_message("[RENDER] Acionando redeploy...")
         try:
             headers = {"Authorization": f"Bearer {self.render_api_key}"}
@@ -443,15 +450,26 @@ class DeployGUI(QMainWindow):
                 headers=headers,
                 timeout=15
             )
-            if resp.status_code == 201:
-                self.log_message("[OK] Redeploy solicitado com sucesso!")
-                QMessageBox.information(self, "Sucesso!", "Redeploy acionado no Render!")
+
+            if resp.status_code in [201, 202]:
+                status_msg = "Aceito" if resp.status_code == 202 else "Criado"
+                self.log_message(f"[OK] Redeploy {status_msg} com sucesso! (HTTP {resp.status_code})")
+                url = f"https://dashboard.render.com/web/services/{self.render_service_id}"
+                QMessageBox.information(
+                    self,
+                    "✅ Redeploy Iniciado",
+                    f"Redeploy {status_msg}!\nStatus HTTP: {resp.status_code}\n\n"
+                    f"Verifique o progresso em:\n{url}"
+                )
             else:
-                self.log_message(f"[ERRO] Falha no Render: HTTP {resp.status_code}")
-                QMessageBox.critical(self, "Erro", f"Falha no redeploy: {resp.status_code}")
+                error_msg = f"Falha no Render (HTTP {resp.status_code}): {resp.text[:200]}"
+                self.log_message(f"[ERRO] {error_msg}")
+                QMessageBox.critical(self, "❌ Falha no Redeploy", error_msg)
+
         except Exception as e:
-            self.log_message(f"[ERRO] Erro ao comunicar com Render: {str(e)}")
-            QMessageBox.critical(self, "Erro", f"Erro de conexão: {str(e)}")
+            error_msg = f"Erro ao comunicar com Render: {str(e)}"
+            self.log_message(f"[ERRO] {error_msg}")
+            QMessageBox.critical(self, "❌ Erro de Conexão", error_msg)
 
     def clear_logs(self):
         self.log_text.clear()
