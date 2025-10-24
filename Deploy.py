@@ -1,30 +1,52 @@
 # =============================================================================
-# LabBirita Mini - Deploy Seguro com Interface Gráfica (PyQt5) - Versão Final
+# LabBirita Mini - Deploy Seguro com Interface Gráfica (PyQt5)
 # =============================================================================
 # Autor: José Biriteiro
 # Projeto: https://github.com/jbiriteiro/labbirita-mini
-# Data: 24 de outubro de 2025
-# Versão: 7.0 (merge final)
+# Data do Código: 24 de outubro de 2025
+# Versão: 7.1 (Final com Validação Obrigatória)
 #
-# Funcionalidades:
-#   📂 Carregar .env + lembrar último caminho
-#   👁️ Revelar/ocultar tokens reais
-#   🔍 Verificar token (API) + validação antes do push
-#   🌐 Abrir no Render
-#   📤 Exportar log + gravação automática em deploy_log.txt
-#   🧼 Limpar histórico com git-filter-repo + backup
-#   ⚙️ Modo Dev/Prod (visual)
-#   ✅ Checagem de branch (só permite 'main')
-#   ✅ Verificação de git user.name/email
-#   📊 Preview com contagem de arquivos + tamanho total
-#   🔄 Verificação de atualizações no GitHub
+# Descrição:
+# Aplicação GUI para automatizar o deploy seguro do LabBirita Mini no GitHub + Render,
+# com foco absoluto em prevenção de vazamento de segredos (.env) e usabilidade clara.
+#
+# Funcionalidades Principais:
+#   📂 Carregar arquivo .env com tokens
+#   👁️ Revelar/ocultar GITHUB_TOKEN e RENDER_API_KEY
+#   🔍 Verificar Token GitHub (com alerta se .env não carregado)
+#   📤 Preview & Enviar (commit + push seguro, com alerta se .env não carregado)
+#   🔄 Reiniciar Serviço no Render (com alerta se .env não carregado)
+#   🌐 Abrir site no Render
+#   🧼 Limpar histórico com git-filter-repo + backup automático
+#   📊 Preview com contagem de arquivos e tamanho total
+#   ✅ Validação de branch (só permite 'main')
+#   ✅ Verificação de git config user.name/email
+#   📤 Exportar log manualmente + gravação automática em deploy_log.txt
+#   ⚙️ Modo Dev/Prod (visual, conforme README)
+#   🚪 Finalizar com confirmação
 #
 # Requisitos:
 #   pip install python-dotenv requests pyqt5 git-filter-repo
 #
-# Segurança:
-#   - Nunca commitar .env
-#   - Revogue tokens comprometidos imediatamente
+# Instruções de Uso (conforme README do projeto):
+#   1. Crie venv e instale requirements.txt
+#   2. Rode localmente com: python app.py  OU  gunicorn app:app --bind 0.0.0.0:5000
+#   3. No Render:
+#        - Build command: pip install -r requirements.txt
+#        - Start command: gunicorn app:app --bind 0.0.0.0:$PORT
+#
+# Segurança Crítica:
+#   - NUNCA commitar .env
+#   - Se já commitou, use "Limpar Histórico" ou siga:
+#     https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line
+#   - Tokens comprometidos devem ser revogados IMEDIATAMENTE
+#
+# Comportamento de Segurança:
+#   - Todos os botões críticos exigem .env carregado
+#   - Se tentar usar sem .env, exibe QMessageBox de alerta
+#   - Validação do token é feita ANTES do push (não só no botão)
+#   - Branch deve ser 'main'
+#   - .env é removido automaticamente do stage se detectado
 # =============================================================================
 
 import sys
@@ -46,16 +68,23 @@ LOG_FILE = "deploy_log.txt"
 
 
 def append_log_file(line: str):
-    """Grava uma linha no arquivo de log com timestamp."""
+    """
+    Grava uma linha no arquivo de log com timestamp.
+    Usado por todas as mensagens do sistema para auditoria contínua.
+    """
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(f"{ts} {line}\n")
     except Exception:
-        pass  # Falha silenciosa
+        pass  # Falha silenciosa para não quebrar o fluxo
 
 
 class DeployWorker(QThread):
+    """
+    Worker em thread separada para operações de deploy.
+    Evita travamento da interface gráfica durante operações longas (Git, API).
+    """
     log_signal = pyqtSignal(str)
     finished_signal = pyqtSignal(bool, str)
     security_check_signal = pyqtSignal(dict)
@@ -67,17 +96,20 @@ class DeployWorker(QThread):
         self.render_service_id = render_service_id
 
     def log(self, msg: str):
+        """Envia mensagem para a GUI e grava no arquivo de log."""
         self.log_signal.emit(msg)
         append_log_file(msg)
 
     def _run_cmd(self, cmd, check=False, capture_output=True, text=True):
+        """Helper para execução segura de comandos do sistema (Git)."""
         return subprocess.run(cmd, check=check, capture_output=capture_output, text=text)
 
     def run(self):
+        """Fluxo principal de deploy seguro — executado em segundo plano."""
         try:
             self.log("[INÍCIO] Iniciando deploy seguro...")
 
-            # --- 1. Segurança básica ---
+            # --- 1. Verificação de segurança básica ---
             checks = {"gitignore": False, "token_valid": False, "env_in_stage": False}
             gitignore_path = Path(".gitignore")
             if gitignore_path.exists():
@@ -87,6 +119,7 @@ class DeployWorker(QThread):
             else:
                 self.log("[AVISO] .gitignore não encontrado.")
 
+            # Validação do token via API (SEM espaços na URL!)
             if self.github_token:
                 try:
                     headers = {"Authorization": f"token {self.github_token}"}
@@ -102,6 +135,7 @@ class DeployWorker(QThread):
 
             self.security_check_signal.emit(checks)
 
+            # Remove .env do stage se necessário
             if checks["env_in_stage"]:
                 self.log("[AÇÃO] .env está sendo rastreado. Removendo...")
                 self._run_cmd(["git", "rm", "--cached", ".env"], check=True)
@@ -115,7 +149,7 @@ class DeployWorker(QThread):
                 self._run_cmd(["git", "commit", "-m", "fix: remover .env do controle de versão"], check=True)
                 self.log("[OK] .env removido do índice.")
 
-            # --- 2. Validações críticas ---
+            # --- 2. Validações críticas (branch e configuração do Git) ---
             branch_proc = self._run_cmd(["git", "branch", "--show-current"])
             current_branch = branch_proc.stdout.strip() if branch_proc.returncode == 0 else ""
             if current_branch != "main":
@@ -144,7 +178,7 @@ class DeployWorker(QThread):
             for f in files_to_commit[:200]:
                 self.log(f"  → {f}")
 
-            # --- 4. Validação final do token ---
+            # --- 4. Validação final do token antes do push ---
             if not checks["token_valid"]:
                 self.log("[ERRO] Token GitHub inválido.")
                 self.finished_signal.emit(False, "GITHUB_TOKEN inválido ou sem permissão.")
@@ -192,9 +226,11 @@ class DeployWorker(QThread):
 
 
 class DeployGUI(QMainWindow):
+    """Interface gráfica principal do deploy seguro."""
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LabBirita Mini - Deploy Pro Final")
+        self.setWindowTitle("LabBirita Mini - Deploy Pro Final v7.1")
         self.resize(980, 740)
         self.setStyleSheet("background-color: #f9f9f9; font-family: 'Segoe UI';")
 
@@ -208,20 +244,21 @@ class DeployGUI(QMainWindow):
         self._setup_ui()
 
     def _setup_ui(self):
+        """Configura todos os componentes da interface gráfica."""
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Final v7.0")
+        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Final v7.1")
         header_label.setFont(QFont("Segoe UI", 14, QFont.Bold))
         header_label.setAlignment(Qt.AlignCenter)
         header_label.setStyleSheet("color: #2c3e50; padding: 10px;")
         main_layout.addWidget(header_label)
 
-        # Carregar .env + tokens
+        # Carregar .env + campos com olhinho
         cred_layout = QHBoxLayout()
         self.load_btn = QPushButton("📂 Carregar .env")
-        self.load_btn.setToolTip("Selecione o arquivo .env com suas credenciais")
+        self.load_btn.setToolTip("Selecione o arquivo .env com GITHUB_TOKEN e RENDER_API_KEY")
         self.load_btn.clicked.connect(self.load_env_file)
         cred_layout.addWidget(self.load_btn)
 
@@ -233,7 +270,7 @@ class DeployGUI(QMainWindow):
 
         self.toggle_token_btn = QPushButton("👁️")
         self.toggle_token_btn.setFixedWidth(30)
-        self.toggle_token_btn.setToolTip("Mostrar/ocultar token")
+        self.toggle_token_btn.setToolTip("Mostrar/ocultar GITHUB_TOKEN")
         self.toggle_token_btn.clicked.connect(lambda: self._toggle_echo(self.token_field, self.toggle_token_btn))
         token_layout.addWidget(self.toggle_token_btn)
         cred_layout.addLayout(token_layout)
@@ -246,18 +283,18 @@ class DeployGUI(QMainWindow):
 
         self.toggle_render_btn = QPushButton("👁️")
         self.toggle_render_btn.setFixedWidth(30)
-        self.toggle_render_btn.setToolTip("Mostrar/ocultar chave da API")
+        self.toggle_render_btn.setToolTip("Mostrar/ocultar RENDER_API_KEY")
         self.toggle_render_btn.clicked.connect(lambda: self._toggle_echo(self.render_field, self.toggle_render_btn))
         render_layout.addWidget(self.toggle_render_btn)
         cred_layout.addLayout(render_layout)
 
         main_layout.addLayout(cred_layout)
 
-        # Modo Dev/Prod
+        # Modo Dev/Prod (conforme README)
         mode_layout = QHBoxLayout()
-        mode_layout.addWidget(QLabel("Modo de execução local:"))
+        mode_layout.addWidget(QLabel("Modo de execução local (conforme README):"))
         self.mode_combo = QComboBox()
-        self.mode_combo.addItems(["Desenvolvimento (python app.py)", "Produção (gunicorn)"])
+        self.mode_combo.addItems(["Desenvolvimento (python app.py)", "Produção (gunicorn app:app --bind 0.0.0.0:5000)"])
         mode_layout.addWidget(self.mode_combo)
         main_layout.addLayout(mode_layout)
 
@@ -277,10 +314,10 @@ class DeployGUI(QMainWindow):
 
         main_layout.addLayout(sec_layout)
 
-        # Botões principais
+        # Botões principais (todos habilitados, mas com validação no clique)
         btn_layout = QHBoxLayout()
         self.verify_token_btn = QPushButton("🔍 Verificar Token GitHub")
-        self.verify_token_btn.setToolTip("Testa se o GITHUB_TOKEN é válido")
+        self.verify_token_btn.setToolTip("Testa se o GITHUB_TOKEN é válido via API")
         self.verify_token_btn.clicked.connect(self.verify_github_token)
         btn_layout.addWidget(self.verify_token_btn)
 
@@ -295,27 +332,27 @@ class DeployGUI(QMainWindow):
         btn_layout.addWidget(self.redeploy_btn)
 
         self.open_render_btn = QPushButton("🌐 Abrir no Render")
-        self.open_render_btn.setToolTip("Abre o site no navegador")
+        self.open_render_btn.setToolTip("Abre https://labbirita-mini.onrender.com no navegador")
         self.open_render_btn.clicked.connect(self.open_render_site)
         btn_layout.addWidget(self.open_render_btn)
 
         self.clean_history_btn = QPushButton("🧼 Limpar Histórico")
-        self.clean_history_btn.setToolTip("Remove .env de TODO o histórico")
+        self.clean_history_btn.setToolTip("Remove .env de TODO o histórico com git-filter-repo")
         self.clean_history_btn.clicked.connect(self.backup_and_clean_history)
         btn_layout.addWidget(self.clean_history_btn)
 
         self.clear_logs_btn = QPushButton("🧹 Limpar Tela")
-        self.clear_logs_btn.setToolTip("Limpa logs")
+        self.clear_logs_btn.setToolTip("Limpa os logs da tela")
         self.clear_logs_btn.clicked.connect(self.clear_logs)
         btn_layout.addWidget(self.clear_logs_btn)
 
         self.export_log_btn = QPushButton("📤 Exportar Log")
-        self.export_log_btn.setToolTip("Salva o log em um arquivo")
+        self.export_log_btn.setToolTip("Salva o log atual em um arquivo .txt")
         self.export_log_btn.clicked.connect(self.export_log)
         btn_layout.addWidget(self.export_log_btn)
 
         self.exit_btn = QPushButton("🚪 Finalizar")
-        self.exit_btn.setToolTip("Fecha o app")
+        self.exit_btn.setToolTip("Fecha o aplicativo")
         self.exit_btn.clicked.connect(self.confirm_exit)
         btn_layout.addWidget(self.exit_btn)
 
@@ -328,11 +365,14 @@ class DeployGUI(QMainWindow):
         self.log_text.setStyleSheet("background-color: #ffffff; border: 1px solid #ddd;")
         main_layout.addWidget(self.log_text)
 
-        self.update_buttons_state()
+        # Mensagem inicial
+        self.log_message("[INFO] Bem-vindo ao Deploy Pro Final v7.1!")
+        self.log_message("[DICA] Clique em 'Carregar .env' para começar.")
 
-    # === FUNÇÕES PRINCIPAIS ===
+    # === FUNÇÕES DE INTERAÇÃO ===
 
     def _toggle_echo(self, field: QLineEdit, btn: QPushButton):
+        """Alterna entre modo oculto e visível nos campos de senha."""
         if field.echoMode() == QLineEdit.Password:
             field.setEchoMode(QLineEdit.Normal)
             btn.setText("🔒")
@@ -341,6 +381,7 @@ class DeployGUI(QMainWindow):
             btn.setText("👁️")
 
     def load_env_file(self):
+        """Carrega arquivo .env e atualiza campos com os valores reais."""
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Selecionar .env", self.env_path, "Arquivos .env (*.env)"
         )
@@ -354,16 +395,20 @@ class DeployGUI(QMainWindow):
             self.token_field.setText(self.github_token)
             self.render_field.setText(self.render_api_key)
 
-            self.update_buttons_state()
             self.log_message(f"[INFO] .env carregado de: {file_path}")
             QMessageBox.information(self, "✅ Arquivo Carregado", "Arquivo .env carregado com sucesso!")
         else:
             self.log_message("[INFO] Seleção de .env cancelada.")
 
     def verify_github_token(self):
+        """Verifica token do GitHub — exige GITHUB_TOKEN."""
         token = self.token_field.text().strip()
         if not token:
-            QMessageBox.warning(self, "Aviso", "Carregue .env ou cole o GITHUB_TOKEN.")
+            QMessageBox.warning(
+                self,
+                "⚠️ Atenção",
+                "Por favor, carregue um arquivo .env com GITHUB_TOKEN antes de verificar."
+            )
             return
         self.log_message("[GITHUB] Verificando token...")
         try:
@@ -372,7 +417,6 @@ class DeployGUI(QMainWindow):
                 login = r.json().get("login")
                 self.log_message(f"[OK] Token válido. Usuário: {login}")
                 QMessageBox.information(self, "✅ Token Válido", f"Usuário GitHub: {login}")
-                self.github_token = token
             else:
                 self.log_message(f"[ERRO] Token inválido. HTTP {r.status_code}")
                 QMessageBox.critical(self, "❌ Token Inválido", f"HTTP {r.status_code}")
@@ -381,36 +425,33 @@ class DeployGUI(QMainWindow):
             QMessageBox.critical(self, "Erro", f"Erro ao checar token: {str(e)}")
 
     def start_commit_push(self):
-        self.github_token = self.token_field.text().strip()
-        self.render_api_key = self.render_field.text().strip()
-        if not self.github_token:
-            QMessageBox.warning(self, "Aviso", "GITHUB_TOKEN ausente.")
+        """Inicia deploy — exige GITHUB_TOKEN."""
+        token = self.token_field.text().strip()
+        if not token:
+            QMessageBox.warning(
+                self,
+                "⚠️ Atenção",
+                "Por favor, carregue um arquivo .env com GITHUB_TOKEN antes de enviar atualizações."
+            )
             return
         self.log_message("[AÇÃO] Iniciando fluxo de commit+push...")
+        self.github_token = token
+        self.render_api_key = self.render_field.text().strip()
         self.worker = DeployWorker(self.github_token, self.render_api_key, self.render_service_id)
         self.worker.log_signal.connect(self.log_message)
         self.worker.security_check_signal.connect(self._update_status_from_checks)
         self.worker.finished_signal.connect(self.on_deploy_finished)
         self.worker.start()
 
-    def _update_status_from_checks(self, checks: dict):
-        color_ok = "color: green;"
-        color_bad = "color: red;"
-        color_warn = "color: orange;"
-
-        self.gitignore_status.setText("✅ .env no .gitignore" if checks.get("gitignore") else "❌ .env NÃO no .gitignore")
-        self.gitignore_status.setStyleSheet(color_ok if checks.get("gitignore") else color_bad)
-
-        self.token_status.setText("✅ Token válido" if checks.get("token_valid") else "❌ Token inválido")
-        self.token_status.setStyleSheet(color_ok if checks.get("token_valid") else color_bad)
-
-        self.env_stage_status.setText("⚠️ .env no stage (será removido)" if checks.get("env_in_stage") else "✅ .env não está no stage")
-        self.env_stage_status.setStyleSheet(color_warn if checks.get("env_in_stage") else color_ok)
-
     def start_redeploy(self):
+        """Aciona redeploy no Render — exige RENDER_API_KEY."""
         key = self.render_field.text().strip()
         if not key:
-            QMessageBox.warning(self, "Aviso", "RENDER_API_KEY ausente.")
+            QMessageBox.warning(
+                self,
+                "⚠️ Atenção",
+                "Por favor, carregue um arquivo .env com RENDER_API_KEY antes de reiniciar o serviço."
+            )
             return
         self.log_message("[RENDER] Enviando pedido de redeploy...")
         try:
@@ -430,11 +471,28 @@ class DeployGUI(QMainWindow):
             self.log_message(f"[ERRO] Falha na requisição Render: {str(e)}")
             QMessageBox.critical(self, "Erro", f"Falha na requisição: {str(e)}")
 
+    def _update_status_from_checks(self, checks: dict):
+        """Atualiza os indicadores visuais de segurança."""
+        color_ok = "color: green;"
+        color_bad = "color: red;"
+        color_warn = "color: orange;"
+
+        self.gitignore_status.setText("✅ .env no .gitignore" if checks.get("gitignore") else "❌ .env NÃO no .gitignore")
+        self.gitignore_status.setStyleSheet(color_ok if checks.get("gitignore") else color_bad)
+
+        self.token_status.setText("✅ Token válido" if checks.get("token_valid") else "❌ Token inválido")
+        self.token_status.setStyleSheet(color_ok if checks.get("token_valid") else color_bad)
+
+        self.env_stage_status.setText("⚠️ .env no stage (será removido)" if checks.get("env_in_stage") else "✅ .env não está no stage")
+        self.env_stage_status.setStyleSheet(color_warn if checks.get("env_in_stage") else color_ok)
+
     def open_render_site(self):
+        """Abre o site do LabBirita Mini no navegador."""
         webbrowser.open(self.render_url)
         self.log_message(f"[INFO] Abrindo {self.render_url} no navegador...")
 
     def export_log(self):
+        """Exporta o conteúdo atual do log para um arquivo .txt."""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         default_name = f"deploy_log_export_{timestamp}.txt"
         file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Log", default_name, "Arquivos de Texto (*.txt)")
@@ -445,6 +503,7 @@ class DeployGUI(QMainWindow):
             QMessageBox.information(self, "✅ Log Exportado", f"Log salvo em:\n{file_path}")
 
     def backup_and_clean_history(self):
+        """Limpa .env de todo o histórico com git-filter-repo + backup."""
         try:
             if not os.path.exists(".git"):
                 self.log_message("[ERRO] Pasta não é um repositório Git.")
@@ -514,20 +573,13 @@ class DeployGUI(QMainWindow):
             self.log_message(f"[ERRO] {str(e)}")
             QMessageBox.critical(self, "Erro", f"Erro: {str(e)}")
 
-    def update_buttons_state(self):
-        has_token = bool(self.github_token)
-        has_render_key = bool(self.render_api_key)
-        self.verify_token_btn.setEnabled(has_token)
-        self.commit_push_btn.setEnabled(has_token)
-        self.redeploy_btn.setEnabled(has_render_key)
-        self.open_render_btn.setEnabled(True)
-        self.clean_history_btn.setEnabled(True)
-
     def clear_logs(self):
+        """Limpa a área de logs da tela."""
         self.log_text.clear()
         self.log_message("[INFO] Logs limpos.")
 
     def confirm_exit(self):
+        """Solicita confirmação antes de fechar o aplicativo."""
         reply = QMessageBox.question(
             self, "Sair", "Tem certeza que deseja fechar o aplicativo?",
             QMessageBox.Yes | QMessageBox.No, QMessageBox.No
@@ -536,11 +588,13 @@ class DeployGUI(QMainWindow):
             self.close()
 
     def log_message(self, msg: str):
+        """Adiciona mensagem à área de logs e rola para o final."""
         self.log_text.append(msg)
         append_log_file(msg)
         self.log_text.verticalScrollBar().setValue(self.log_text.verticalScrollBar().maximum())
 
     def on_deploy_finished(self, success: bool, message: str):
+        """Exibe mensagem final após conclusão do deploy."""
         if not success:
             QMessageBox.critical(self, "Erro no Deploy", message)
         else:
