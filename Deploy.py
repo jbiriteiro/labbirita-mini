@@ -4,7 +4,7 @@
 # Autor: José Biriteiro
 # Projeto: https://github.com/jbiriteiro/labbirita-mini
 # Data: 24 de outubro de 2025
-# Versão: 7.4 (Final Blindada)
+# Versão: 7.5 (com Deploy ID do Render)
 #
 # Baseado no README oficial:
 #   - Modo Dev: python app.py
@@ -15,6 +15,7 @@
 #   - NUNCA commitar .env
 #   - Use "Limpar Histórico" se já commitou
 #   - Tokens são ocultados em logs
+#   - Deploy ID do Render exibido para rastreabilidade
 # =============================================================================
 
 import sys
@@ -40,7 +41,7 @@ LOG_FILE = "deploy_log.txt"
 def append_log_file(line: str):
     """Grava linha no log, com limite de 2MB."""
     if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 2_000_000:
-        open(LOG_FILE, "w").close()  # Limpa se > 2MB
+        open(LOG_FILE, "w").close()
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -61,15 +62,13 @@ class DeployWorker(QThread):
         self.render_service_id = render_service_id
 
     def log(self, msg: str):
-        # Oculta tokens sensíveis antes de logar
         clean_msg = msg
         if any(kw in msg for kw in ["GITHUB_TOKEN", "RENDER_API_KEY", "token"]):
             clean_msg = "[SEGREDO] Token ocultado por segurança"
         self.log_signal.emit(clean_msg)
-        append_log_file(msg)  # mantém original no arquivo (para auditoria interna)
+        append_log_file(msg)
 
     def _run_cmd(self, cmd, timeout=30):
-        """Executa comando com timeout padrão de 30s."""
         return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     def run(self):
@@ -161,6 +160,7 @@ class DeployWorker(QThread):
                 return
             self.log("[OK] Push concluído com sucesso.")
 
+            # === REDPLOY NO RENDER + EXTRAÇÃO DO DEPLOY ID ===
             self.log("[RENDER] Solicitando redeploy...")
             headers = {"Authorization": f"Bearer {self.render_api_key}"}
             resp = requests.post(
@@ -172,6 +172,17 @@ class DeployWorker(QThread):
                 self.log(f"[ERRO] Render falhou (HTTP {resp.status_code})")
                 self.finished_signal.emit(False, f"Render respondeu HTTP {resp.status_code}")
                 return
+
+            # ✅ Extrai e exibe o Deploy ID
+            try:
+                r_json = resp.json()
+                if "id" in r_json:
+                    self.log(f"[RENDER] Deploy ID: {r_json['id']}")
+                else:
+                    self.log("[AVISO] Resposta do Render sem 'id' — verifique a API.")
+            except Exception as e:
+                self.log(f"[ERRO] Falha ao parsear resposta do Render: {e}")
+
             self.log("[OK] Redeploy solicitado.")
             self.log("[CONCLUÍDO] Deploy seguro finalizado.")
             self.finished_signal.emit(True, "Deploy concluído com sucesso.")
@@ -190,7 +201,7 @@ class DeployWorker(QThread):
 class DeployGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LabBirita Mini - Deploy Pro Final v7.4")
+        self.setWindowTitle("LabBirita Mini - Deploy Pro Final v7.5")
         self.resize(1060, 820)
         self.deploy_in_progress = False
         self.dark_mode_enabled = False
@@ -237,7 +248,7 @@ class DeployGUI(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Final v7.4")
+        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Final v7.5")
         header_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
         header_label.setAlignment(Qt.AlignCenter)
         header_label.setStyleSheet("color: #0d6efd; margin: 12px 0;")
@@ -339,7 +350,6 @@ class DeployGUI(QMainWindow):
 
         main_layout.addLayout(btn_layout)
 
-        # Área de logs
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Consolas", 11))
@@ -355,7 +365,6 @@ class DeployGUI(QMainWindow):
         self.log_text.setHtml("")
         main_layout.addWidget(self.log_text)
 
-        # Dark mode toggle
         footer_layout = QHBoxLayout()
         self.dark_mode = QCheckBox("🌙 Modo Noturno")
         self.dark_mode.stateChanged.connect(self.toggle_dark_mode)
@@ -363,7 +372,7 @@ class DeployGUI(QMainWindow):
         footer_layout.addStretch()
         main_layout.addLayout(footer_layout)
 
-        self.log_message("[INFO] Bem-vindo ao Deploy Pro Final v7.4!")
+        self.log_message("[INFO] Bem-vindo ao Deploy Pro Final v7.5!")
         self.log_message("[DICA] Clique em 'Carregar .env' para começar.")
 
     def toggle_dark_mode(self, state):
@@ -521,6 +530,14 @@ class DeployGUI(QMainWindow):
                 timeout=15
             )
             if resp.status_code in (201, 202):
+                try:
+                    r_json = resp.json()
+                    if "id" in r_json:
+                        self.log_message(f"[RENDER] Deploy ID: {r_json['id']}")
+                    else:
+                        self.log_message("[AVISO] Resposta do Render sem 'id'")
+                except:
+                    pass
                 self.log_message(f"[OK] Redeploy solicitado (HTTP {resp.status_code}).")
                 QMessageBox.information(self, "✅ Redeploy iniciado", "Verifique o dashboard do Render.")
             else:
@@ -685,7 +702,6 @@ class DeployGUI(QMainWindow):
             QMessageBox.critical(self, "Erro no Deploy", message)
         else:
             QMessageBox.information(self, "Sucesso!", "Deploy concluído com segurança!")
-            # Oferece abrir o Render
             reply = QMessageBox.question(
                 self, "Abrir no Render?",
                 "Deploy concluído!\nDeseja abrir o site agora?",
@@ -693,6 +709,7 @@ class DeployGUI(QMainWindow):
             )
             if reply == QMessageBox.Yes:
                 webbrowser.open(self.render_url)
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
