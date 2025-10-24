@@ -3,66 +3,44 @@
 # =============================================================================
 # Autor: José Biriteiro
 # Projeto: https://github.com/jbiriteiro/labbirita-mini
-# Data do Código: 24 de outubro de 2025
-# Versão: 7.3 (Logs Estilizados)
+# Data: 24 de outubro de 2025
+# Versão: 7.4 (Final Blindada)
 #
-# Descrição:
-# Aplicação GUI para automatizar o deploy seguro do LabBirita Mini no GitHub + Render,
-# com foco absoluto em prevenção de vazamento de segredos (.env) e usabilidade clara.
+# Baseado no README oficial:
+#   - Modo Dev: python app.py
+#   - Modo Prod: gunicorn app:app --bind 0.0.0.0:$PORT
+#   - Render: Build = pip install -r requirements.txt, Start = gunicorn ...
 #
-# Funcionalidades Principais:
-#   📂 Carregar arquivo .env com tokens
-#   👁️ Revelar/ocultar GITHUB_TOKEN e RENDER_API_KEY
-#   🔍 Verificar Token GitHub (com alerta se .env não carregado)
-#   📤 Preview & Enviar (commit + push seguro, com alerta se .env não carregado)
-#   🔄 Reiniciar Serviço no Render (com alerta se .env não carregado)
-#   🌐 Abrir site no Render
-#   🧼 Limpar histórico com git-filter-repo + backup automático
-#   📊 Preview com contagem de arquivos e tamanho total
-#   ✅ Validação de branch (só permite 'main')
-#   ✅ Verificação de git config user.name/email
-#   📤 Exportar log manualmente + gravação automática em deploy_log.txt
-#   ⚙️ Modo Dev/Prod (visual, conforme README)
-#   🚪 Finalizar com confirmação
-#
-# Requisitos:
-#   pip install python-dotenv requests pyqt5 git-filter-repo
-#
-# Instruções de Uso (conforme README do projeto):
-#   1. Crie venv e instale requirements.txt
-#   2. Rode localmente com: python app.py  OU  gunicorn app:app --bind 0.0.0.0:5000
-#   3. No Render:
-#        - Build command: pip install -r requirements.txt
-#        - Start command: gunicorn app:app --bind 0.0.0.0:$PORT
-#
-# Segurança Crítica:
+# Segurança:
 #   - NUNCA commitar .env
-#   - Se já commitou, use "Limpar Histórico" ou siga:
-#     https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line
-#   - Tokens comprometidos devem ser revogados IMEDIATAMENTE
+#   - Use "Limpar Histórico" se já commitou
+#   - Tokens são ocultados em logs
 # =============================================================================
 
 import sys
 import os
 import subprocess
 import webbrowser
+import shutil
 from pathlib import Path
 from datetime import datetime
 from dotenv import load_dotenv
 import requests
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QPushButton, QTextEdit, QLabel, QMessageBox, QLineEdit, QFileDialog, QComboBox
+    QPushButton, QTextEdit, QLabel, QMessageBox, QLineEdit, QFileDialog,
+    QComboBox, QCheckBox
 )
 from PyQt5.QtCore import QThread, pyqtSignal, Qt, QSettings
 from PyQt5.QtGui import QFont
-
 
 LOG_FILE = "deploy_log.txt"
 
 
 def append_log_file(line: str):
-    """Grava uma linha no arquivo de log com timestamp (texto puro)."""
+    """Grava linha no log, com limite de 2MB."""
+    if os.path.exists(LOG_FILE) and os.path.getsize(LOG_FILE) > 2_000_000:
+        open(LOG_FILE, "w").close()  # Limpa se > 2MB
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     try:
         with open(LOG_FILE, "a", encoding="utf-8") as f:
@@ -83,11 +61,16 @@ class DeployWorker(QThread):
         self.render_service_id = render_service_id
 
     def log(self, msg: str):
-        self.log_signal.emit(msg)
-        append_log_file(msg)
+        # Oculta tokens sensíveis antes de logar
+        clean_msg = msg
+        if any(kw in msg for kw in ["GITHUB_TOKEN", "RENDER_API_KEY", "token"]):
+            clean_msg = "[SEGREDO] Token ocultado por segurança"
+        self.log_signal.emit(clean_msg)
+        append_log_file(msg)  # mantém original no arquivo (para auditoria interna)
 
-    def _run_cmd(self, cmd, check=False, capture_output=True, text=True):
-        return subprocess.run(cmd, check=check, capture_output=capture_output, text=text)
+    def _run_cmd(self, cmd, timeout=30):
+        """Executa comando com timeout padrão de 30s."""
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
 
     def run(self):
         try:
@@ -119,15 +102,15 @@ class DeployWorker(QThread):
 
             if checks["env_in_stage"]:
                 self.log("[AÇÃO] .env está sendo rastreado. Removendo...")
-                self._run_cmd(["git", "rm", "--cached", ".env"], check=True)
+                self._run_cmd(["git", "rm", "--cached", ".env"])
                 if not gitignore_path.exists():
                     gitignore_path.write_text(".env\n", encoding="utf-8")
                 else:
                     content = gitignore_path.read_text(encoding="utf-8")
                     if ".env" not in content:
                         gitignore_path.write_text(content + "\n.env\n", encoding="utf-8")
-                self._run_cmd(["git", "add", ".gitignore"], check=True)
-                self._run_cmd(["git", "commit", "-m", "fix: remover .env do controle de versão"], check=True)
+                self._run_cmd(["git", "add", ".gitignore"])
+                self._run_cmd(["git", "commit", "-m", "fix: remover .env do controle de versão"])
                 self.log("[OK] .env removido do índice.")
 
             branch_proc = self._run_cmd(["git", "branch", "--show-current"])
@@ -164,14 +147,14 @@ class DeployWorker(QThread):
 
             self.log("[GIT] Preparando commit...")
             self._run_cmd(["git", "add", "."])
-            commit_res = self._run_cmd(["git", "commit", "-m", "Deploy: atualização automática"], capture_output=True, text=True)
+            commit_res = self._run_cmd(["git", "commit", "-m", "Deploy: atualização automática"])
             if commit_res.returncode != 0 and "nothing to commit" not in commit_res.stderr.lower():
                 self.log(f"[ERRO] Falha no commit: {commit_res.stderr[:500]}")
                 self.finished_signal.emit(False, "Falha ao criar commit.")
                 return
 
             self.log("[GIT] Enviando para GitHub...")
-            push_proc = self._run_cmd(["git", "push", "origin", "main"], capture_output=True, text=True)
+            push_proc = self._run_cmd(["git", "push", "origin", "main"])
             if push_proc.returncode != 0:
                 self.log(f"[ERRO] Push falhou: {push_proc.stderr.strip()[:800]}")
                 self.finished_signal.emit(False, "Falha no git push.")
@@ -193,6 +176,9 @@ class DeployWorker(QThread):
             self.log("[CONCLUÍDO] Deploy seguro finalizado.")
             self.finished_signal.emit(True, "Deploy concluído com sucesso.")
 
+        except subprocess.TimeoutExpired:
+            self.log("[ERRO] Comando Git travado (timeout). Verifique SSH/Git config.")
+            self.finished_signal.emit(False, "Timeout em comando Git.")
         except subprocess.CalledProcessError as e:
             self.log(f"[ERRO] Comando git falhou: {e.stderr if hasattr(e, 'stderr') else str(e)}")
             self.finished_signal.emit(False, "Erro ao executar comando git.")
@@ -204,13 +190,14 @@ class DeployWorker(QThread):
 class DeployGUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("LabBirita Mini - Deploy Pro Final v7.3")
-        self.resize(1040, 800)
+        self.setWindowTitle("LabBirita Mini - Deploy Pro Final v7.4")
+        self.resize(1060, 820)
+        self.deploy_in_progress = False
+        self.dark_mode_enabled = False
 
-        # Estilo visual moderno
         self.setStyleSheet("""
-            QMainWindow { background-color: #f8f9fa; }
-            QLabel { font-family: 'Segoe UI'; font-size: 11pt; color: #212529; }
+            QMainWindow { background-color: #f8f9fa; color: #212529; }
+            QLabel { font-family: 'Segoe UI'; font-size: 11pt; }
             QPushButton {
                 font-family: 'Segoe UI';
                 font-size: 11pt;
@@ -230,12 +217,9 @@ class DeployGUI(QMainWindow):
                 border: 1px solid #ced4da;
                 border-radius: 4px;
             }
-            QComboBox {
+            QComboBox, QCheckBox {
                 font-family: 'Segoe UI';
                 font-size: 11pt;
-                padding: 4px;
-                border: 1px solid #ced4da;
-                border-radius: 4px;
             }
         """)
 
@@ -253,7 +237,7 @@ class DeployGUI(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QVBoxLayout(central_widget)
 
-        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Final v7.3")
+        header_label = QLabel("🚀 LabBirita Mini - Deploy Pro Final v7.4")
         header_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
         header_label.setAlignment(Qt.AlignCenter)
         header_label.setStyleSheet("color: #0d6efd; margin: 12px 0;")
@@ -355,7 +339,7 @@ class DeployGUI(QMainWindow):
 
         main_layout.addLayout(btn_layout)
 
-        # Área de logs estilizada com HTML
+        # Área de logs
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Consolas", 11))
@@ -368,11 +352,85 @@ class DeployGUI(QMainWindow):
             font-family: Consolas, monospace;
             font-size: 11pt;
         """)
-        self.log_text.setHtml("")  # Inicia vazio
+        self.log_text.setHtml("")
         main_layout.addWidget(self.log_text)
 
-        self.log_message("[INFO] Bem-vindo ao Deploy Pro Final v7.3!")
+        # Dark mode toggle
+        footer_layout = QHBoxLayout()
+        self.dark_mode = QCheckBox("🌙 Modo Noturno")
+        self.dark_mode.stateChanged.connect(self.toggle_dark_mode)
+        footer_layout.addWidget(self.dark_mode)
+        footer_layout.addStretch()
+        main_layout.addLayout(footer_layout)
+
+        self.log_message("[INFO] Bem-vindo ao Deploy Pro Final v7.4!")
         self.log_message("[DICA] Clique em 'Carregar .env' para começar.")
+
+    def toggle_dark_mode(self, state):
+        self.dark_mode_enabled = bool(state)
+        if state:
+            self.setStyleSheet("""
+                QMainWindow { background-color: #121212; color: #f0f0f0; }
+                QLabel { color: #e0e0e0; }
+                QPushButton {
+                    background-color: #1e1e1e;
+                    border: 1px solid #333;
+                    color: #f0f0f0;
+                }
+                QPushButton:hover { background-color: #2a2a2a; }
+                QPushButton:pressed { background-color: #3a3a3a; }
+                QLineEdit {
+                    background-color: #1e1e1e;
+                    border: 1px solid #333;
+                    color: #f0f0f0;
+                }
+                QComboBox, QCheckBox { color: #f0f0f0; }
+            """)
+            self.log_text.setStyleSheet("""
+                background-color: #121212;
+                border: 1px solid #333;
+                color: #e0e0e0;
+                font-family: Consolas, monospace;
+                font-size: 11pt;
+                padding: 10px;
+            """)
+        else:
+            self.setStyleSheet("""
+                QMainWindow { background-color: #f8f9fa; color: #212529; }
+                QLabel { font-family: 'Segoe UI'; font-size: 11pt; }
+                QPushButton {
+                    font-family: 'Segoe UI';
+                    font-size: 11pt;
+                    font-weight: bold;
+                    padding: 6px 12px;
+                    border: 1px solid #ced4da;
+                    border-radius: 6px;
+                    background-color: #ffffff;
+                    min-height: 32px;
+                }
+                QPushButton:hover { background-color: #e9ecef; }
+                QPushButton:pressed { background-color: #dee2e6; }
+                QLineEdit {
+                    font-family: 'Segoe UI';
+                    font-size: 11pt;
+                    padding: 6px;
+                    border: 1px solid #ced4da;
+                    border-radius: 4px;
+                }
+                QComboBox, QCheckBox {
+                    font-family: 'Segoe UI';
+                    font-size: 11pt;
+                }
+            """)
+            self.log_text.setStyleSheet("""
+                background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 6px;
+                padding: 10px;
+                color: #212529;
+                font-family: Consolas, monospace;
+                font-size: 11pt;
+            """)
 
     def _toggle_echo(self, field: QLineEdit, btn: QPushButton):
         if field.echoMode() == QLineEdit.Password:
@@ -425,6 +483,8 @@ class DeployGUI(QMainWindow):
             QMessageBox.critical(self, "Erro", f"Erro ao checar token: {str(e)}")
 
     def start_commit_push(self):
+        if self.deploy_in_progress:
+            return
         token = self.token_field.text().strip()
         if not token:
             QMessageBox.warning(
@@ -433,6 +493,7 @@ class DeployGUI(QMainWindow):
                 "Por favor, carregue um arquivo .env com GITHUB_TOKEN antes de enviar atualizações."
             )
             return
+        self.deploy_in_progress = True
         self.log_message("[AÇÃO] Iniciando fluxo de commit+push...")
         self.github_token = token
         self.render_api_key = self.render_field.text().strip()
@@ -500,12 +561,8 @@ class DeployGUI(QMainWindow):
                 QMessageBox.warning(self, "Erro", "Esta pasta não é um repositório Git.")
                 return
 
-            try:
-                subprocess.run(["git", "filter-repo", "--version"], check=True, capture_output=True)
-            except FileNotFoundError:
-                msg = "git-filter-repo não encontrado.\nInstale com: pip install git-filter-repo"
-                self.log_message("[ERRO] " + msg.replace("\n", " "))
-                QMessageBox.critical(self, "Ferramenta ausente", msg)
+            if not shutil.which("git-filter-repo"):
+                QMessageBox.critical(self, "Erro", "git-filter-repo não encontrado no PATH.\nInstale com: pip install git-filter-repo")
                 return
 
             confirm = QMessageBox.question(
@@ -564,7 +621,7 @@ class DeployGUI(QMainWindow):
             QMessageBox.critical(self, "Erro", f"Erro: {str(e)}")
 
     def clear_logs(self):
-        self.log_text.setHtml("")  # Limpa HTML
+        self.log_text.setHtml("")
         self.log_message("[INFO] Logs limpos.")
 
     def confirm_exit(self):
@@ -576,7 +633,6 @@ class DeployGUI(QMainWindow):
             self.close()
 
     def log_message(self, msg: str):
-        """Exibe mensagem estilizada com ícones, cores e alinhamento."""
         if msg.startswith("["):
             if "]" in msg:
                 end_bracket = msg.index("]") + 1
@@ -623,15 +679,20 @@ class DeployGUI(QMainWindow):
         self.log_text.setTextCursor(cursor)
         self.log_text.insertHtml(html_line + "<br>")
 
-        append_log_file(msg)
-        self.log_text.verticalScrollBar().setValue(self.log_text.verticalScrollBar().maximum())
-
     def on_deploy_finished(self, success: bool, message: str):
+        self.deploy_in_progress = False
         if not success:
             QMessageBox.critical(self, "Erro no Deploy", message)
         else:
             QMessageBox.information(self, "Sucesso!", "Deploy concluído com segurança!")
-
+            # Oferece abrir o Render
+            reply = QMessageBox.question(
+                self, "Abrir no Render?",
+                "Deploy concluído!\nDeseja abrir o site agora?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if reply == QMessageBox.Yes:
+                webbrowser.open(self.render_url)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
