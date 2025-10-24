@@ -1,0 +1,76 @@
+<!--
+Arquivo: admin.html
+Função: Painel administrativo da LabBirita Mini Loja
+Permite cadastrar novos produtos (nome, preço, descrição, imagem)
+Data: 23/10/2025
+Autor: Gibão & GPT-5 🍻
+-->
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Admin - LabBirita Mini</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    body {
+      background: #111;
+      color: #fff;
+      font-family: 'Poppins', sans-serif;
+      text-align: center;
+      padding: 40px;
+    }
+    h1 { color: #00ff95; }
+    form {
+      margin: 30px auto;
+      max-width: 450px;
+      background: #1c1c1c;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 0 10px #00ff95;
+    }
+    input, textarea {
+      width: 90%;
+      margin: 8px 0;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+    }
+    button {
+      background: #00ff95;
+      border: none;
+      padding: 12px 25px;
+      color: #000;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover { background: #00cc77; }
+    .msg {
+      margin-top: 15px;
+      font-weight: bold;
+      color: #00ff95;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>🧠 Painel Administrativo</h1>
+  <p>Adicione novos produtos à <b>LabBirita Mini Loja</b></p>
+
+  <form id="productForm">
+    <input type="text" id="name" placeholder="Nome do Produto" required><br>
+    <input type="number" id="price" step="0.01" placeholder="Preço (R$)" required><br>
+    <textarea id="description" placeholder="Descrição" rows="3" required></textarea><br>
+    <input type="url" id="image" placeholder="URL da Imagem" required><br>
+    <button type="submit">Cadastrar Produto</button>
+  </form>
+
+  <div class="msg" id="msg"></div>
+
+  <a href="/" style="color:#00ff95;text-decoration:none;">⬅️ Voltar à Loja</a>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

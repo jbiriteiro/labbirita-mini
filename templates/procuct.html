@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ product.title }} | LabBirita Mini Loja</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header>
+  <h1>{{ product.title }}</h1>
+  <a href="{{ url_for('index') }}">← Voltar para Loja</a>
+</header>
+
+<main class="product-detail">
+  <div class="product-info">
+    <img src="{{ product.image }}" alt="{{ product.title }}">
+    <p>{{ product.short_desc }}</p>
+    <p class="price">R$ {{ "%.2f"|format(product.price) }}</p>
+  </div>
+
+  <div class="checkout-form">
+    <h2>Finalizar Pedido</h2>
+    
+    {% if form_errors %}
+      <div class="errors">
+        <ul>
+        {% for err in form_errors %}
+          <li>{{ err }}</li>
+        {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form action="{{ url_for('checkout_form') }}" method="POST">
+      <input type="hidden" name="product_id" value="{{ product.id }}">
+
+      <label>Nome:</label>
+      <input type="text" name="name" value="{{ form_data.name if form_data else '' }}" required>
+
+      <label>Email:</label>
+      <input type="email" name="email" value="{{ form_data.email if form_data else '' }}" required>
+
+      <label>Telefone:</label>
+      <input type="text" name="phone" value="{{ form_data.phone if form_data else '' }}">
+
+      <label>Endereço:</label>
+      <textarea name="address" required>{{ form_data.address if form_data else '' }}</textarea>
+
+      <button type="submit" class="btn">Finalizar Pedido</button>
+    </form>
+  </div>
+</main>
+
+<footer>
+  &copy; {{ now().year }} LabBirita Mini | Simulação Dropshipping
+</footer>
+
+</body>
+</html>

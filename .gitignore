@@ -1,0 +1,57 @@
+# ===============================
+# LabBirita Mini - Gitignore Profissa
+# ===============================
+
+# -------------------------------
+# Python
+# -------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+*.egg-info/
+*.egg
+
+# -------------------------------
+# Ambiente Virtual
+# -------------------------------
+venv/
+env/
+.venv/
+.env/    # se você criou pasta separada pra virtualenv
+
+# -------------------------------
+# Arquivos de configuração sensíveis
+# -------------------------------
+.env        # variáveis secretas (tokens, keys)
+*.key
+*.pem
+
+# -------------------------------
+# Logs e dados temporários
+# -------------------------------
+*.log
+*.sqlite3
+data/*.json  # se você não quiser subir os pedidos reais, mas no seu caso pode ignorar
+__pycache__/
+*.tmp
+*.bak
+
+# -------------------------------
+# Editor e OS
+# -------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# -------------------------------
+# Build / Distribuição
+# -------------------------------
+build/
+dist/
+*.egg-info/

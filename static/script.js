@@ -1,28 +1,47 @@
-document.addEventListener('DOMContentLoaded', async () => {
-    const container = document.getElementById('produtos');
-    const res = await fetch('/api/products');
-    const produtos = await res.json();
+/*
+Arquivo: script.js
+Função: Controla interações no front (carrinho, admin, mensagens)
+Data: 23/10/2025
+Autor: Gibão & GPT-5 🍻
+*/
 
-    produtos.forEach(p => {
-        const div = document.createElement('div');
-        div.className = 'card';
-        div.innerHTML = `
-            <img src="${p.img}" alt="${p.nome}">
-            <h3>${p.nome}</h3>
-            <p>💰 R$ ${p.preco.toFixed(2)}</p>
-            <button onclick="fazerPedido(${p.id})">Pedir Agora</button>
-        `;
-        container.appendChild(div);
+// Detecta se está no painel admin
+const form = document.getElementById("productForm");
+if (form) {
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    // Captura valores do formulário
+    const productData = {
+      name: document.getElementById("name").value,
+      price: parseFloat(document.getElementById("price").value),
+      description: document.getElementById("description").value,
+      image: document.getElementById("image").value
+    };
+
+    // Envia pro backend (rota /admin/add)
+    const response = await fetch("/admin/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(productData)
     });
-});
 
-async function fazerPedido(id) {
-    const resposta = await fetch('/api/order', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({produto_id: id})
-    });
+    const msgDiv = document.getElementById("msg");
 
-    const data = await resposta.json();
-    alert(`✅ ${data.message}`);
+    if (response.ok) {
+      msgDiv.textContent = "✅ Produto adicionado com sucesso!";
+      msgDiv.style.color = "#00ff95";
+      form.reset();
+    } else {
+      msgDiv.textContent = "❌ Erro ao adicionar produto!";
+      msgDiv.style.color = "red";
+    }
+
+    setTimeout(() => { msgDiv.textContent = ""; }, 3000);
+  });
+}
+
+// Função genérica pra adicionar ao carrinho
+function addToCart(productName) {
+  alert(`🍻 ${productName} foi adicionado ao carrinho! (Simulado)`);
 }

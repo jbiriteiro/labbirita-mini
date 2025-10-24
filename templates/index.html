@@ -1,24 +1,36 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <title>LabBirita Mini 🍻</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LabBirita Mini Loja</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <header>
-        <h1>🍺 LabBirita Mini Loja</h1>
-        <p>Escolha sua birita e finalize o pedido!</p>
-    </header>
 
-    <main>
-        <div id="produtos" class="grid"></div>
-    </main>
+  <!-- Cabeçalho -->
+  <header>
+    <h1>LabBirita Mini Loja</h1>
+    <p>Produtos Disponíveis - Dropshipping Simulado 🚀</p>
+  </header>
 
-    <footer>
-        <p>© 2025 LabBirita Inc. | Powered by Flask 💻</p>
-    </footer>
+  <!-- Catálogo de produtos -->
+  <div class="container">
+    {% for product in products %}
+    <div class="product">
+      <img src="{{ product.image }}" alt="{{ product.title }}">
+      <h3>{{ product.title }}</h3>
+      <p>{{ product.short_desc }}</p>
+      <p class="price">R$ {{ "%.2f"|format(product.price) }}</p>
+      <a href="{{ url_for('product_page', product_id=product.id) }}" class="btn">Ver Produto</a>
+    </div>
+    {% endfor %}
+  </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  <!-- Rodapé -->
+  <footer>
+    &copy; {{ now().year }} LabBirita Mini | Simulação Dropshipping
+  </footer>
+
 </body>
 </html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pedido {{ order.order_id }} | LabBirita Mini Loja</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header>
+  <h1>Pedido Confirmado!</h1>
+  <a href="{{ url_for('index') }}">← Voltar para Loja</a>
+</header>
+
+<main class="order-confirmation">
+  <div class="order-info">
+    <h2>Resumo do Pedido</h2>
+    <p><strong>Pedido ID:</strong> {{ order.order_id }}</p>
+    <p><strong>Produto:</strong> {{ order.product_title }}</p>
+    <p><strong>Preço:</strong> R$ {{ "%.2f"|format(order.price) }}</p>
+    <p><strong>Status:</strong> {{ order.status }}</p>
+    <p><strong>Data do Pedido:</strong> {{ order.created_at }}</p>
+    <p><strong>Entrega Estimada:</strong> {{ order.estimated_delivery_date }} ({{ order.estimated_delivery_days }} dias)</p>
+    <p><strong>Tracking Code:</strong> {{ order.tracking_code }}</p>
+  </div>
+
+  <div class="customer-info">
+    <h2>Dados do Cliente</h2>
+    <p><strong>Nome:</strong> {{ order.customer.name }}</p>
+    <p><strong>Email:</strong> {{ order.customer.email }}</p>
+    <p><strong>Telefone:</strong> {{ order.customer.phone }}</p>
+    <p><strong>Endereço:</strong> {{ order.customer.address }}</p>
+  </div>
+
+  <div class="supplier-info">
+    <h2>Envio ao Supplier</h2>
+    {% if order.supplier.sent %}
+      <p>✅ Pedido enviado ao supplier</p>
+      <p><strong>Resposta:</strong> {{ order.supplier.response.message }}</p>
+    {% else %}
+      <p>⏳ Pedido ainda não enviado ao supplier (simulado)</p>
+    {% endif %}
+  </div>
+</main>
+
+<footer>
+  &copy; {{ now().year }} LabBirita Mini | Simulação Dropshipping
+</footer>
+
+</body>
+</html>
